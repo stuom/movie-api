@@ -5,6 +5,7 @@ import java.time.Year;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import org.springframework.stereotype.Component;
 
 /**
  * The only place that holds the movie validation rules from the domain table in AGENTS.md
@@ -12,21 +13,26 @@ import java.util.Objects;
  *
  * <p>It needs a {@link Clock} because the latest allowed year is "current year + 5"; the year is
  * taken in the clock's zone.
+ *
+ * <p>The limits are public only so the OpenAPI annotations on the web DTOs can show them without a
+ * second copy of the numbers; they are enforced here and nowhere else.
  */
+@Component
 public final class MovieRules {
 
-  private static final int MAX_NAME_LENGTH = 200;
-  private static final int FIRST_FILM_YEAR = 1888;
-  private static final int YEARS_AHEAD_ALLOWED = 5;
-  private static final int MIN_GENRES = 1;
-  private static final int MAX_GENRES = 5;
-  private static final int MAX_GENRE_LENGTH = 50;
-  private static final int MAX_AGE_LIMIT = 18;
-  private static final int MIN_RATING = 1;
-  private static final int MAX_RATING = 5;
-  private static final int MAX_PERSON_NAME_LENGTH = 100;
-  private static final int MAX_ACTORS = 30;
-  private static final int MAX_SYNOPSIS_LENGTH = 2000;
+  public static final int MAX_NAME_LENGTH = 200;
+  public static final int FIRST_FILM_YEAR = 1888;
+  public static final int YEARS_AHEAD_ALLOWED = 5;
+  public static final int MIN_GENRES = 1;
+  public static final int MAX_GENRES = 5;
+  public static final int MAX_GENRE_LENGTH = 50;
+  public static final int MIN_AGE_LIMIT = 0;
+  public static final int MAX_AGE_LIMIT = 18;
+  public static final int MIN_RATING = 1;
+  public static final int MAX_RATING = 5;
+  public static final int MAX_PERSON_NAME_LENGTH = 100;
+  public static final int MAX_ACTORS = 30;
+  public static final int MAX_SYNOPSIS_LENGTH = 2000;
 
   /** The one wording for an absent value, whether null or blank. */
   private static final String IS_REQUIRED = "is required";
@@ -52,7 +58,7 @@ public final class MovieRules {
     int latestYear = Year.now(clock).getValue() + YEARS_AHEAD_ALLOWED;
     checkRange("year", newMovie.year(), FIRST_FILM_YEAR, latestYear, violations);
     List<String> genres = genres(newMovie.genres(), violations);
-    checkRange("ageLimit", newMovie.ageLimit(), 0, MAX_AGE_LIMIT, violations);
+    checkRange("ageLimit", newMovie.ageLimit(), MIN_AGE_LIMIT, MAX_AGE_LIMIT, violations);
     checkRange("rating", newMovie.rating(), MIN_RATING, MAX_RATING, violations);
     Person director =
         newMovie.director() == null ? null : person("director", newMovie.director(), violations);

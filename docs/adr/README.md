@@ -15,5 +15,7 @@ Add a new ADR instead of rewriting history; mark old ones as superseded.
 | [0008](0008-quality-gates-and-build-verification.md) | Quality gates and build verification | Accepted |
 | [0009](0009-movie-validation-in-plain-java.md) | Movie validation in plain Java at the service boundary | Accepted |
 | [0010](0010-storage-errors-and-document-mapping.md) | Storage errors, bounded waits and document mapping | Accepted |
+| [0011](0011-springdoc-openapi.md) | OpenAPI description and Swagger UI with springdoc-openapi | Accepted |
+| [0012](0012-strict-json-request-bodies.md) | Strict JSON request bodies | Accepted |
 
 Template: `.claude/skills/document-change/templates/adr-template.md`

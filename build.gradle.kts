@@ -32,6 +32,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     // Plain Firestore client, not Spring Data Firestore (reactive only); ADR-0003. Not managed by the Boot BOM.
     implementation("com.google.cloud:google-cloud-firestore:3.49.0")
+    // OpenAPI description and Swagger UI; the 2.8.x line matches Spring Boot 3.5. ADR-0011.
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.17")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

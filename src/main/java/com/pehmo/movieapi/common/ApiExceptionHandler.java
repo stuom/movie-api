@@ -1,0 +1,151 @@
+package com.pehmo.movieapi.common;
+
+import com.fasterxml.jackson.core.exc.InputCoercionException;
+import com.fasterxml.jackson.core.exc.StreamConstraintsException;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
+import com.pehmo.movieapi.movie.service.DuplicateMovieException;
+import com.pehmo.movieapi.movie.service.InvalidMovieException;
+import com.pehmo.movieapi.movie.service.MovieStorageException;
+import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
+
+/**
+ * The single place that turns an error into an RFC 7807 problem detail (ADR-0004).
+ *
+ * <p>Extending {@link ResponseEntityExceptionHandler} gives Spring MVC's own errors (unknown path,
+ * wrong method, wrong content type, missing body) the same format. Every {@code detail} is written
+ * here, never copied from an exception, so internals such as class names, Jackson messages or
+ * storage errors cannot leak; server errors are logged with their stack trace instead.
+ *
+ * <p>Problem members: {@code type} stays {@code about:blank} and {@code title} the status phrase;
+ * {@code instance} is filled with the request path by Spring. Extensions: {@code violations} for
+ * {@code 400} body errors and {@code movieId} for duplicates.
+ *
+ * <p>The catch-all {@link #handleUnexpected} runs before Spring's {@code @ResponseStatus}
+ * resolution, so every new exception that should not be a {@code 500} (such as a future {@code
+ * MovieNotFoundException}) needs its own handler here.
+ */
+@RestControllerAdvice
+public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
+
+  private static final Logger LOG = LoggerFactory.getLogger(ApiExceptionHandler.class);
+
+  private static final String VIOLATIONS = "violations";
+  private static final String MOVIE_ID = "movieId";
+
+  private static final String UNREADABLE_BODY =
+      "The request body is not a valid movie: it must be a JSON object with the documented fields"
+          + " and types.";
+  private static final String STORAGE_FAILURE =
+      "The movie store failed or did not answer in time. If you were adding a movie, it may have"
+          + " been saved; retrying is safe.";
+  private static final String UNEXPECTED_ERROR = "An unexpected error occurred.";
+  private static final String BODY_TOO_LARGE =
+      "The request body is too large; a movie fits in " + JacksonConfig.MAX_BODY_KILOBYTES + " KB.";
+  private static final String NO_ENDPOINT = "There is no endpoint at this path.";
+
+  /** A movie that breaks rules: every violation, with its field path, in field order. */
+  @ExceptionHandler(InvalidMovieException.class)
+  public ProblemDetail handleInvalidMovie(InvalidMovieException exception) {
+    List<ProblemViolation> violations =
+        exception.violations().stream()
+            .map(violation -> new ProblemViolation(violation.field(), violation.message()))
+            .toList();
+    ProblemDetail problem =
+        ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST,
+            "The movie breaks %d %s; see violations."
+                .formatted(violations.size(), violations.size() == 1 ? "rule" : "rules"));
+    problem.setProperty(VIOLATIONS, violations);
+    return problem;
+  }
+
+  /** A second copy of an existing film; {@code movieId} lets the client find the existing one. */
+  @ExceptionHandler(DuplicateMovieException.class)
+  public ProblemDetail handleDuplicateMovie(DuplicateMovieException exception) {
+    ProblemDetail problem =
+        ProblemDetail.forStatusAndDetail(
+            HttpStatus.CONFLICT,
+            "A movie with the same name and year as '%s' (%d) already exists."
+                .formatted(exception.name(), exception.year()));
+    problem.setProperty(MOVIE_ID, exception.movieId());
+    return problem;
+  }
+
+  /**
+   * The store failed. The detail tells a client that retrying a create is safe, because a timed-out
+   * create may have been stored and a retry then answers {@code 409} (ADR-0010).
+   */
+  @ExceptionHandler(MovieStorageException.class)
+  public ProblemDetail handleStorageFailure(MovieStorageException exception) {
+    LOG.error("Movie store failure", exception);
+    return ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, STORAGE_FAILURE);
+  }
+
+  /** Anything not handled above is a bug or an outage: log it, reveal nothing. */
+  @ExceptionHandler(Exception.class)
+  public ProblemDetail handleUnexpected(Exception exception) {
+    LOG.error("Unexpected error", exception);
+    return ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, UNEXPECTED_ERROR);
+  }
+
+  /**
+   * A body that cannot be read as a movie: missing, not JSON, a wrong type, a number out of range
+   * or an unknown field. The offending field is named when Jackson knows where the error is. A body
+   * over the size limit is {@code 413}, so a client knows that fixing a field will not help.
+   */
+  @Override
+  protected ResponseEntity<Object> handleHttpMessageNotReadable(
+      HttpMessageNotReadableException exception,
+      HttpHeaders headers,
+      HttpStatusCode status,
+      WebRequest request) {
+    if (exception.getCause() instanceof StreamConstraintsException) {
+      HttpStatus tooLarge = HttpStatus.PAYLOAD_TOO_LARGE;
+      ProblemDetail problem = ProblemDetail.forStatusAndDetail(tooLarge, BODY_TOO_LARGE);
+      return handleExceptionInternal(exception, problem, headers, tooLarge, request);
+    }
+    ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, UNREADABLE_BODY);
+    if (exception.getCause() instanceof JsonMappingException mapping
+        && !mapping.getPath().isEmpty()) {
+      ProblemViolation violation =
+          new ProblemViolation(JsonFieldPath.of(mapping.getPath()), problemWith(mapping));
+      problem.setProperty(VIOLATIONS, List.of(violation));
+    }
+    return handleExceptionInternal(exception, problem, headers, status, request);
+  }
+
+  /** Spring's own wording names static resources, which means nothing to an API client. */
+  @Override
+  protected ResponseEntity<Object> handleNoResourceFoundException(
+      NoResourceFoundException exception,
+      HttpHeaders headers,
+      HttpStatusCode status,
+      WebRequest request) {
+    ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, NO_ENDPOINT);
+    return handleExceptionInternal(exception, problem, headers, status, request);
+  }
+
+  private static String problemWith(JsonMappingException mapping) {
+    if (mapping instanceof UnrecognizedPropertyException) {
+      return "is not a known field";
+    }
+    if (mapping.getCause() instanceof InputCoercionException) {
+      return "is out of range";
+    }
+    return "has the wrong type";
+  }
+}

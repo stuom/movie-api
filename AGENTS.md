@@ -43,7 +43,7 @@ src/main/java/com/pehmo/movieapi/
   MovieApiApplication.java
   movie/
     web/          MovieController, NewMovieRequest, MovieResponse, MoviePageResponse, PersonDto, MovieMapper
-    service/      MovieService (business rules), Movie and Person (domain records),
+    service/      MovieService (use cases; the entry point for API and seed input), Movie and Person (domain records),
                   NewMovie (raw input, all fields nullable), MovieRules (the only home of the movie rules, ADR-0009),
                   InvalidMovieException + FieldViolation, MovieId (deterministic id), TextNormalization (normalize, trim),
                   DuplicateMovieException, MovieStorageException (storage failures without storage types, ADR-0010),
@@ -51,7 +51,8 @@ src/main/java/com/pehmo/movieapi/
                   MovieCatalog (in-memory snapshot of all movies), MovieSeedLoader (loads the sample data on startup)
     persistence/  MovieRepository (interface), FirestoreMovieRepository, MovieDocument (storage mapping),
                   FirestoreErrors (recognizes ALREADY_EXISTS)
-  common/         error handling (@RestControllerAdvice), Firestore configuration
+  common/         ApiExceptionHandler (the one @RestControllerAdvice, ADR-0004), ProblemViolation (violations entry), JsonFieldPath,
+                  ClockConfig, JacksonConfig (strict JSON, ADR-0012), OpenApiConfig (ADR-0011), FirestoreConfig
 src/main/resources/seed/movies.json   sample data (the provided movies-compact.json)
 src/test/java/                     unit tests (*Test)
 postman/                           Postman collection + environment (API tests against the deployed service)
@@ -127,7 +128,7 @@ Rules:
    "actors": [{"firstName": "Sigourney", "lastName": "Weaver"}],
    "synopsis": "Ellen Ripley is rescued by a deep salvage team after being in hypersleep for 57 years."}
   ```
-- Errors use RFC 7807 `ProblemDetail`: `400` for invalid input (bad body, `viewerAge` or ratings out of range, `minRating` above `maxRating`, `minYear` above `maxYear`, more than one search field, bad `page`/`size`), `404` not found, `409` duplicate. Never leak stack traces.
+- Errors use RFC 7807 `ProblemDetail`: `400` for invalid input (bad body, `viewerAge` or ratings out of range, `minRating` above `maxRating`, `minYear` above `maxYear`, more than one search field, bad `page`/`size`), `404` not found, `409` duplicate (with `movieId`, the id of the existing movie), `413` request body too large. Never leak stack traces.
 - Every endpoint is annotated for OpenAPI (summary, parameters, response codes) and described in `docs/api.md`. Adding a filter means updating this table, `MovieSearchCriteria`, `MovieSearch`, the OpenAPI annotations, `docs/api.md` and the tests (see the `movie-search` skill).
 
 ## Persistence and catalog rules (details in the `firestore-persistence` and `movie-search` skills)
@@ -172,7 +173,7 @@ Rules:
 - `README.md`: what it is, prerequisites (Java 21), how to run the unit tests and the Postman collection, link to the deployed Swagger UI, link to the deployment doc.
 - `docs/api.md`: human-readable contract with request/response examples (curl).
 - `docs/firestore-model.md`: collection layout and document fields. `docs/api.md` also documents the search semantics.
-- `docs/adr/NNNN-title.md`: one short ADR per significant decision. ADR-0001 to ADR-0010 exist (index in `docs/adr/README.md`); update or supersede them instead of duplicating.
+- `docs/adr/NNNN-title.md`: one short ADR per significant decision. ADR-0001 to ADR-0012 exist (index in `docs/adr/README.md`); update or supersede them instead of duplicating.
 - `docs/ai-log/NN-slice-name.md`: record of each AI-assisted slice: key prompts, plan, what was changed or rejected.
 
 ## How to work (agents and humans)

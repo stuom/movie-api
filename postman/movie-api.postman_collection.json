@@ -1,0 +1,393 @@
+{
+  "info": {
+    "name": "Movie API",
+    "description": "API tests for the deployed Movie API (contract: docs/api.md). Set `baseUrl` in the environment to the Cloud Run URL (no trailing slash) and run the whole collection in order with the Collection Runner.\n\n**Data warning:** Each run of the collection adds exactly one movie named `0 Pmtest <runId>` to the real database. There is no delete endpoint: remove leftovers by hand in the Firestore console.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 Add movie",
+      "description": "POST /api/v1/movies: create (201, Location, trimmed texts), the duplicate rule (409 with movieId), rule violations and unknown fields (400 problem details). Only the first request stores a movie.\n\nEach run of the collection adds exactly one movie named `0 Pmtest <runId>` to the real database. There is no delete endpoint: remove leftovers by hand in the Firestore console.",
+      "item": [
+        {
+          "name": "POST add a movie - 201 with trimmed fields",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A fresh run id for every run, so the test movie never collides with an earlier run.",
+                  "pm.collectionVariables.set(\"runId\", Date.now().toString(36));",
+                  "pm.collectionVariables.unset(\"movieId\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 201 Created\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "const runId = pm.collectionVariables.get(\"runId\");",
+                  "const expected = {",
+                  "    name: \"0 Pmtest \" + runId,",
+                  "    year: 1900,",
+                  "    genres: [\"Pmgenre\" + runId, \"Drama\"],",
+                  "    ageLimit: 18,",
+                  "    rating: 1,",
+                  "    director: { firstName: \"Pmdir\" + runId, lastName: \"Lastdir\" + runId },",
+                  "    actors: [",
+                  "        { firstName: \"Pmact\" + runId, lastName: \"Lastact\" + runId },",
+                  "        { firstName: \"Other\" + runId, lastName: \"Person\" + runId }",
+                  "    ],",
+                  "    synopsis: \"pmsyn\" + runId + \" alpha beta\"",
+                  "};",
+                  "",
+                  "pm.test(\"returns an id of 32 lowercase hex characters\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.id).to.be.a(\"string\").and.match(/^[0-9a-f]{32}$/);",
+                  "});",
+                  "",
+                  "pm.test(\"returns a Location header /api/v1/movies/{id} ending with the new id\", function () {",
+                  "    const location = pm.response.headers.get(\"Location\");",
+                  "    pm.expect(location, \"Location header\").to.be.a(\"string\").and.match(/^\\/api\\/v1\\/movies\\/[0-9a-f]{32}$/);",
+                  "    pm.expect(location.endsWith(\"/\" + body.id), \"Location ends with the body id\").to.be.true;",
+                  "});",
+                  "",
+                  "pm.test(\"returns the name trimmed\", function () {",
+                  "    pm.expect(body.name).to.eql(expected.name);",
+                  "});",
+                  "",
+                  "pm.test(\"returns director, actors and synopsis\", function () {",
+                  "    pm.expect(body).to.have.property(\"director\").that.is.an(\"object\");",
+                  "    pm.expect(body).to.have.property(\"actors\").that.is.an(\"array\").with.lengthOf(2);",
+                  "    pm.expect(body).to.have.property(\"synopsis\").that.is.a(\"string\");",
+                  "});",
+                  "",
+                  "pm.test(\"returns every submitted field with trimmed texts and nothing else\", function () {",
+                  "    const withoutId = Object.assign({}, body);",
+                  "    delete withoutId.id;",
+                  "    pm.expect(withoutId).to.eql(expected);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201 && body && /^[0-9a-f]{32}$/.test(body.id)) {",
+                  "    pm.collectionVariables.set(\"movieId\", body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Adds the run's test movie `0 Pmtest {{runId}}` (name, one genre, the director's last name and the synopsis padded with spaces) and saves its id as `movieId`. Its pre-request script sets a fresh `runId`.\n\n**This is the request that adds a movie to the real database** (exactly one per run). Remove it by hand in the Firestore console.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"   0 Pmtest {{runId}}  \",\n  \"year\": 1900,\n  \"genres\": [\"  Pmgenre{{runId}}  \", \"Drama\"],\n  \"ageLimit\": 18,\n  \"rating\": 1,\n  \"director\": {\"firstName\": \"Pmdir{{runId}}\", \"lastName\": \"  Lastdir{{runId}} \"},\n  \"actors\": [\n    {\"firstName\": \"Pmact{{runId}}\", \"lastName\": \"Lastact{{runId}}\"},\n    {\"firstName\": \"Other{{runId}}\", \"lastName\": \"Person{{runId}}\"}\n  ],\n  \"synopsis\": \"  pmsyn{{runId}} alpha beta  \"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST add the same movie again - 409 with movieId",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 409 Conflict\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Conflict, status 409, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Conflict\");",
+                  "    pm.expect(body.status).to.eql(409);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"returns movieId equal to the id of the movie added by 'Add a movie'\", function () {",
+                  "    const movieId = pm.collectionVariables.get(\"movieId\");",
+                  "    pm.expect(movieId, \"movieId is set by 'Add a movie'; run the folder from the start\").to.match(/^[0-9a-f]{32}$/);",
+                  "    pm.expect(body.movieId).to.eql(movieId);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Same year, name in different case with extra inner and surrounding spaces: the normalized name and year equal the first movie, so the real Firestore duplicate check must answer 409 with the existing `movieId`. Stores nothing.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"  0   PMTEST    {{runId}} \",\n  \"year\": 1900,\n  \"genres\": [\"  Pmgenre{{runId}}  \", \"Drama\"],\n  \"ageLimit\": 18,\n  \"rating\": 1,\n  \"director\": {\"firstName\": \"Pmdir{{runId}}\", \"lastName\": \"  Lastdir{{runId}} \"},\n  \"actors\": [\n    {\"firstName\": \"Pmact{{runId}}\", \"lastName\": \"Lastact{{runId}}\"},\n    {\"firstName\": \"Other{{runId}}\", \"lastName\": \"Person{{runId}}\"}\n  ],\n  \"synopsis\": \"  pmsyn{{runId}} alpha beta  \"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST reject an invalid movie - 400 with violations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"detail counts the 3 broken rules\", function () {",
+                  "    pm.expect(body.detail).to.include(\"3 rules\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name every broken rule in field order\", function () {",
+                  "    pm.expect(body.violations).to.eql([",
+                  "        { field: \"name\", message: \"is required\" },",
+                  "        { field: \"rating\", message: \"must be between 1 and 5\" },",
+                  "        { field: \"actors[0].lastName\", message: \"is required\" }",
+                  "    ]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Blank name, rating 9 and an actor without `lastName`: 400 with all three violations in field order. Stores nothing.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"   \",\n  \"year\": 1900,\n  \"genres\": [\"Pmgenre{{runId}}\"],\n  \"ageLimit\": 18,\n  \"rating\": 9,\n  \"actors\": [{\"firstName\": \"Pmact{{runId}}\"}]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST reject an unknown field - 400 naming synopsys",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name synopsys as not a known field\", function () {",
+                  "    pm.expect(body.violations).to.be.an(\"array\");",
+                  "    pm.expect(body.violations).to.deep.include({ field: \"synopsys\", message: \"is not a known field\" });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "A valid movie plus the misspelled field `synopsys`: 400 naming the unknown field. Uses its own name `0 Pmtest unknown {{runId}}` so that, if the check ever regressed and the movie were stored, it would be recognizable (and must then be removed by hand in the Firestore console).",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"0 Pmtest unknown {{runId}}\",\n  \"year\": 1900,\n  \"genres\": [\"Pmgenre{{runId}}\"],\n  \"ageLimit\": 18,\n  \"rating\": 1,\n  \"synopsys\": \"pmsyn{{runId}} misspelled field\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Lets a single request run on its own: the first request of '01 Add movie' always sets a fresh runId.",
+          "if (!pm.collectionVariables.get(\"runId\")) {",
+          "    pm.collectionVariables.set(\"runId\", Date.now().toString(36));",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (pm.response.code >= 400) {",
+          "    pm.test(\"error response does not leak internals (exception names or stack traces)\", function () {",
+          "        const text = pm.response.text() || \"\";",
+          "        pm.expect(text).to.not.include(\"Exception\");",
+          "        pm.expect(text).to.not.match(/\\bat (com|org|java|jdk|sun)\\.[\\w$.]+\\(/);",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "runId",
+      "value": ""
+    },
+    {
+      "key": "movieId",
+      "value": ""
+    }
+  ]
+}

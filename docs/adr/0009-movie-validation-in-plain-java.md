@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-13
+- **Updated:** 2026-10-13 (slice 04: `Clock` wired by `common/ClockConfig`; `MovieRules` is a Spring `@Component`; Bean Validation is not used for the body; limits are public constants that the OpenAPI `@Schema` annotations refer to)
 
 ## Context
 A new movie reaches the service from two places: the `POST /api/v1/movies` body and the seed file, which `MovieSeedLoader` (in the service package) reads on startup. Both must obey the same rules from the domain table in AGENTS.md and ADR-0006. The endpoint is public and unauthenticated, so the error response must stay small even for a hostile body. The year ceiling ("current year + 5") changes over time, and movies already stored must keep loading even if a rule is tightened later.
@@ -17,6 +18,12 @@ A new movie reaches the service from two places: the `POST /api/v1/movies` body 
 - **Bounded violations:** when `genres` or `actors` exceed their count limit, only the count violation is reported and the entries are not checked one by one, so an oversized body cannot produce an unbounded error response.
 - **Clock-based ceiling:** `MovieRules` takes a `Clock`; the latest allowed year is `Year.now(clock) + 5`. Tests use a fixed clock; production will use `Clock.systemUTC()` (wired in a later slice).
 - **`Movie` is not re-validated:** its constructor only requires the structural parts (`requireNonNull`, `List.copyOf`). Movies loaded from storage use the same constructor, so tightening a rule later cannot break loading movies that were valid when they were added.
+
+### Settled in slice 04
+- **Clock:** `common/ClockConfig` provides `Clock.systemUTC()`, so the current year does not depend on the server's time zone.
+- **Spring bean:** `MovieRules` is a `@Component`, and `MovieService` receives it by constructor injection.
+- **No Bean Validation for the body:** `NewMovieRequest` has no constraint annotations. This settles the open point in the consequences below for the movie body; query parameters are decided when the search slice is planned.
+- **Public limits:** the limit constants are `public static final`, so the OpenAPI `@Schema` annotations on the web DTOs can refer to them instead of copying the numbers (ADR-0011). They are still enforced only in `MovieRules`.
 
 ## Consequences
 - API input and seed data cannot disagree about what a valid movie is, and the rules are unit-tested in milliseconds (boundaries for every field).
