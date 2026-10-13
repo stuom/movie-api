@@ -28,7 +28,7 @@ import java.util.List;
 @Schema(description = "A movie to add. Text is trimmed; unknown fields are rejected.")
 public record NewMovieRequest(
     @Schema(
-            description = "Name of the movie.",
+            description = "Name of the movie, trimmed; no control characters.",
             example = "Aliens",
             requiredMode = Schema.RequiredMode.REQUIRED,
             minLength = 1,
@@ -43,7 +43,7 @@ public record NewMovieRequest(
     @ArraySchema(
             arraySchema =
                 @Schema(
-                    description = "Genres, free text.",
+                    description = "Genres, free text, trimmed; no control characters.",
                     example = "[\"Action\", \"Sci-fi\"]",
                     requiredMode = Schema.RequiredMode.REQUIRED),
             minItems = MovieRules.MIN_GENRES,

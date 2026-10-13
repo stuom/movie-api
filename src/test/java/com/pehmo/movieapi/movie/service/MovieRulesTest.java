@@ -24,6 +24,8 @@ class MovieRulesTest {
   private static final Clock FIXED_CLOCK =
       Clock.fixed(Instant.parse("2026-06-15T00:00:00Z"), ZoneOffset.UTC);
 
+  private static final String NO_CONTROL_CHARACTERS = "must not contain control characters";
+
   private final MovieRules rules = new MovieRules(FIXED_CLOCK);
 
   /** Runs the rules on an invalid movie and returns the violated field paths in order. */
@@ -32,6 +34,13 @@ class MovieRulesTest {
     assertThat(thrown).isInstanceOf(InvalidMovieException.class);
     return ((InvalidMovieException) thrown)
         .violations().stream().map(FieldViolation::field).toList();
+  }
+
+  /** Runs the rules on an invalid movie and returns the exact violations in order. */
+  private List<FieldViolation> violationsOf(NewMovie newMovie) {
+    Throwable thrown = catchThrowable(() -> rules.toValidMovie(newMovie));
+    assertThat(thrown).isInstanceOf(InvalidMovieException.class);
+    return ((InvalidMovieException) thrown).violations();
   }
 
   private static List<String> genresOfSize(int size) {
@@ -218,6 +227,73 @@ class MovieRulesTest {
 
       // then
       assertThat(movie.name()).isEqualTo("Aliens");
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+        strings = {"\0", "\t", "\n", "\r", "\u001B", "\u001F", "\u007F", "\u0085", "\u009F"})
+    void shouldRejectNameWhenItContainsAnInnerControlCharacter(String control) {
+      // given
+      NewMovie newMovie = aNewMovie().withName("Ali" + control + "ens").build();
+
+      // when
+      List<FieldViolation> violations = violationsOf(newMovie);
+
+      // then
+      assertThat(violations).containsExactly(new FieldViolation("name", NO_CONTROL_CHARACTERS));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\0Aliens", "Aliens\u001B", "Aliens\u007F", "\u0085Aliens"})
+    void shouldRejectNameWhenItEndsWithNonWhitespaceControlCharacter(String name) {
+      // given a control character that String.strip() does not remove
+      NewMovie newMovie = aNewMovie().withName(name).build();
+
+      // when
+      List<FieldViolation> violations = violationsOf(newMovie);
+
+      // then
+      assertThat(violations).containsExactly(new FieldViolation("name", NO_CONTROL_CHARACTERS));
+    }
+
+    @Test
+    void shouldTrimSurroundingTabAndNewlineWhenNameHasThem() {
+      // given
+      NewMovie newMovie = aNewMovie().withName("\tAliens\n").build();
+
+      // when
+      Movie movie = rules.toValidMovie(newMovie);
+
+      // then
+      assertThat(movie.name()).isEqualTo("Aliens");
+    }
+
+    @Test
+    void shouldReportLengthAndControlCharacterViolationsWhenNameIsTooLongAndHasControlCharacter() {
+      // given
+      NewMovie newMovie = aNewMovie().withName(textOfLength(200) + "\n" + "a").build();
+
+      // when
+      List<FieldViolation> violations = violationsOf(newMovie);
+
+      // then
+      assertThat(violations)
+          .containsExactly(
+              new FieldViolation("name", "must be at most 200 characters"),
+              new FieldViolation("name", NO_CONTROL_CHARACTERS));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Ali ens", "Ali\u00A0ens"})
+    void shouldAcceptNameWhenItContainsAnInnerSpaceOrNoBreakSpace(String name) {
+      // given
+      NewMovie newMovie = aNewMovie().withName(name).build();
+
+      // when
+      Movie movie = rules.toValidMovie(newMovie);
+
+      // then
+      assertThat(movie.name()).isEqualTo(name);
     }
 
     @Test
@@ -407,6 +483,21 @@ class MovieRulesTest {
 
       // then
       assertThat(fields).containsExactly("genres[0]");
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+        strings = {"\0", "\t", "\n", "\r", "\u001B", "\u001F", "\u007F", "\u0085", "\u009F"})
+    void shouldRejectGenreWhenItContainsAnInnerControlCharacter(String control) {
+      // given
+      NewMovie newMovie = aNewMovie().withGenres(List.of("Action", "Sci" + control + "fi")).build();
+
+      // when
+      List<FieldViolation> violations = violationsOf(newMovie);
+
+      // then
+      assertThat(violations)
+          .containsExactly(new FieldViolation("genres[1]", NO_CONTROL_CHARACTERS));
     }
 
     @Test
@@ -608,6 +699,22 @@ class MovieRulesTest {
       assertThat(fields).containsExactly("director.firstName", "director.lastName");
     }
 
+    @ParameterizedTest
+    @ValueSource(
+        strings = {"\0", "\t", "\n", "\r", "\u001B", "\u001F", "\u007F", "\u0085", "\u009F"})
+    void shouldRejectDirectorFirstNameWhenItContainsAnInnerControlCharacter(String control) {
+      // given
+      NewMovie newMovie =
+          aNewMovie().withDirector(aPerson("Ja" + control + "mes", "Cameron")).build();
+
+      // when
+      List<FieldViolation> violations = violationsOf(newMovie);
+
+      // then
+      assertThat(violations)
+          .containsExactly(new FieldViolation("director.firstName", NO_CONTROL_CHARACTERS));
+    }
+
     @Test
     void shouldTrimDirectorNamesWhenTheyHaveSurroundingSpaces() {
       // given
@@ -748,6 +855,22 @@ class MovieRulesTest {
       assertThat(movie.actors()).containsExactly(new Person("a", textOfLength(100)));
     }
 
+    @ParameterizedTest
+    @ValueSource(
+        strings = {"\0", "\t", "\n", "\r", "\u001B", "\u001F", "\u007F", "\u0085", "\u009F"})
+    void shouldRejectActorLastNameWhenItContainsAnInnerControlCharacter(String control) {
+      // given
+      NewMovie newMovie =
+          aNewMovie().withActors(List.of(aPerson("Sigourney", "We" + control + "aver"))).build();
+
+      // when
+      List<FieldViolation> violations = violationsOf(newMovie);
+
+      // then
+      assertThat(violations)
+          .containsExactly(new FieldViolation("actors[0].lastName", NO_CONTROL_CHARACTERS));
+    }
+
     @Test
     void shouldTrimActorNamesWhenTheyHaveSurroundingSpaces() {
       // given
@@ -812,6 +935,18 @@ class MovieRulesTest {
 
       // then
       assertThat(movie.synopsis()).isNull();
+    }
+
+    @Test
+    void shouldKeepInnerLineBreakWhenSynopsisHasOne() {
+      // given
+      NewMovie newMovie = aNewMovie().withSynopsis("First line.\nSecond line.").build();
+
+      // when
+      Movie movie = rules.toValidMovie(newMovie);
+
+      // then
+      assertThat(movie.synopsis()).isEqualTo("First line.\nSecond line.");
     }
 
     @Test

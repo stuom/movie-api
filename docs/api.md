@@ -21,9 +21,9 @@ machine-readable one is the OpenAPI description served by the deployed service a
 | Field | Type | In a request | In a response |
 |---|---|---|---|
 | `id` | string | Not accepted (an unknown field, `400`). | Always. 32 lowercase hex characters, derived from the normalized name and the year. |
-| `name` | string | Required, 1-200 characters after trimming. | Always. |
+| `name` | string | Required, 1-200 characters after trimming, no control characters. | Always. |
 | `year` | integer | Required, 1888 to current year + 5. | Always. |
-| `genres` | array of strings | Required, 1-5 entries, each 1-50 characters after trimming. Free text. | Always, in the order given. |
+| `genres` | array of strings | Required, 1-5 entries, each 1-50 characters after trimming, no control characters. Free text. | Always, in the order given. |
 | `ageLimit` | integer | Required, 0-18: minimum recommended viewer age in years. | Always. |
 | `rating` | integer | Required, 1-5 stars. | Always. |
 | `director` | `Person` | Optional; omit it or send `null` when unknown. | Always present; `null` when unknown. |
@@ -31,13 +31,19 @@ machine-readable one is the OpenAPI description served by the deployed service a
 | `synopsis` | string | Optional, at most 2000 characters after trimming. A blank synopsis counts as none. | Always present; `null` when there is none. |
 
 `Person` is `{"firstName": string, "lastName": string}`; both are required, 1-100 characters after
-trimming. Multi-word last names are normal (`"Lee Jones"`, `"del Toro"`).
+trimming, no control characters. Multi-word last names are normal (`"Lee Jones"`, `"del Toro"`).
 
 Text rules:
 - Leading and trailing whitespace is removed from every text before checking and storing; case and
   inner spacing are kept as entered.
 - Lengths count UTF-16 code units of the trimmed text (`String.length()` in Java).
 - "Required" means present, not `null` and not blank.
+- Names, genres and person names must not contain control characters (U+0000-U+001F,
+  U+007F-U+009F, such as tab, line feed or carriage return). Control characters that are whitespace
+  (tab, line feed, carriage return, U+001C-U+001F) at either end are trimmed like spaces; any other
+  control character is rejected wherever it appears. Violation:
+  `{"field": "name", "message": "must not contain control characters"}`. The synopsis may contain
+  line breaks.
 - Types are strict: integers must be JSON integers and texts must be JSON strings. `1986.5`, `1986.0`
   and `"1986"` for `year` are rejected, not converted, and so is `123` for `name`.
 

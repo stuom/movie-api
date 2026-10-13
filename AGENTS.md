@@ -72,19 +72,20 @@ Rules:
 | Field | Type | Rules |
 |---|---|---|
 | `id` | string | Generated and deterministic: hash of normalized `name` + `year`. Never supplied by clients. |
-| `name` | string | Required, 1-200 chars. |
+| `name` | string | Required, 1-200 chars, no control characters. |
 | `year` | integer | Required, 1888..current year + 5. |
-| `genres` | list of strings | Required, 1-5 entries, each 1-50 chars. Free text for now (no fixed vocabulary). |
+| `genres` | list of strings | Required, 1-5 entries, each 1-50 chars, no control characters. Free text for now (no fixed vocabulary). |
 | `ageLimit` | integer | Required, 0-18: minimum recommended age in years. |
 | `rating` | integer | Required, 1-5 stars. |
 | `director` | `Person` | Optional. |
 | `actors` | list of `Person` | Optional, 0-30 entries, order preserved. |
 | `synopsis` | string | Optional, max 2000 chars. |
 
-`Person`: `firstName` and `lastName`, both required, 1-100 chars. Multi-word last names are normal (`Lee Jones`, `del Toro`).
+`Person`: `firstName` and `lastName`, both required, 1-100 chars, no control characters. Multi-word last names are normal (`Lee Jones`, `del Toro`).
 
 Rules:
 - All incoming text is trimmed (the sample data has stray leading spaces, for example `" Downey Jr."`).
+- Names, genres and person names must not contain control characters (`Character.isISOControl`), checked after trimming; the synopsis may (ADR-0006).
 - Normalization (`TextNormalization.normalize`) = Unicode NFC, trim, collapse inner whitespace, lowercase with `Locale.ROOT`. It is used for the id and for all text matching.
   Whitespace means `Character.isWhitespace` everywhere (so U+00A0 NBSP is not whitespace). Stored text is only trimmed. The normalization and id algorithm are frozen (ADR-0006).
 - All movie rules live in `MovieRules` (plain Java, ADR-0009): it reports every violation with its field path. Do not duplicate them as Bean Validation annotations on DTOs.

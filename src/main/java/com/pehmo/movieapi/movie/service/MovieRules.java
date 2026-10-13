@@ -37,6 +37,8 @@ public final class MovieRules {
   /** The one wording for an absent value, whether null or blank. */
   private static final String IS_REQUIRED = "is required";
 
+  private static final String NO_CONTROL_CHARACTERS = "must not contain control characters";
+
   private final Clock clock;
 
   /** Creates the rules using {@code clock} for the current year. */
@@ -83,7 +85,13 @@ public final class MovieRules {
 
   /**
    * Returns the trimmed text, or null after recording a violation when it is missing or blank; also
-   * records a violation when it is too long.
+   * records a violation when it is too long or contains a control character.
+   *
+   * <p>Required texts (name, genres, person names) are short labels, so a line break, tab, NUL or
+   * escape code in them is a mistake or an attack on whatever displays or logs them (ADR-0006).
+   * Control characters that are whitespace (tab, line feed, carriage return, U+001C-U+001F) are
+   * trimmed from both ends first, like spaces; any other control character is rejected wherever it
+   * appears, even at an end.
    */
   private static String requiredText(
       String field, String text, int maxLength, List<FieldViolation> violations) {
@@ -94,6 +102,9 @@ public final class MovieRules {
     String trimmed = TextNormalization.trim(text);
     if (trimmed.length() > maxLength) {
       violations.add(new FieldViolation(field, "must be at most " + maxLength + " characters"));
+    }
+    if (trimmed.chars().anyMatch(Character::isISOControl)) {
+      violations.add(new FieldViolation(field, NO_CONTROL_CHARACTERS));
     }
     return trimmed;
   }

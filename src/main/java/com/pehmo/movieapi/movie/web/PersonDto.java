@@ -13,14 +13,15 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(description = "A director or actor.")
 public record PersonDto(
     @Schema(
-            description = "First name, trimmed.",
+            description = "First name, trimmed; no control characters.",
             example = "Sigourney",
             requiredMode = Schema.RequiredMode.REQUIRED,
             minLength = 1,
             maxLength = MovieRules.MAX_PERSON_NAME_LENGTH)
         String firstName,
     @Schema(
-            description = "Last name, trimmed. Multi-word last names are normal.",
+            description =
+                "Last name, trimmed; no control characters. Multi-word last names are normal.",
             example = "Weaver",
             requiredMode = Schema.RequiredMode.REQUIRED,
             minLength = 1,
