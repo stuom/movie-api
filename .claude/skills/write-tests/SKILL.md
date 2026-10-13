@@ -28,10 +28,10 @@ For search tests also provide a small shared catalog (5-8 movies modeled on the 
 |---|---|---|
 | `MovieSearch`, `MovieSearchCriteria` | plain JUnit, no mocks | The core. Full matrix, including the one-field rule, in the `movie-search` skill |
 | `MovieCatalog` | plain JUnit + Mockito (`MovieRepository`) + fixed `Clock` | Initial load, replaced after create, no reload before the interval, reload after it, failed refresh keeps the old snapshot |
-| `MovieService` | Mockito (`MovieRepository`, `MovieCatalog` or real catalog with a stub repository) | Create: trimming, validation, deterministic id, duplicate -> `DuplicateMovieException`, catalog updated; get by id; search delegates correctly |
+| `MovieService` | Mockito (`MovieRepository`, `MovieCatalog` or real catalog with a stub repository) | Create: an invalid movie -> `InvalidMovieException` from `MovieRules` (rules themselves are tested in `MovieRulesTest`), duplicate -> `DuplicateMovieException`, catalog updated; get by id; search delegates correctly |
 | Controller | `@WebMvcTest(MovieController.class)` + `MockMvc`, mocked service | Parameter binding for every filter, defaults, `Location` header, validation errors, response shape (`items`, `page`, `size`, `totalItems`, `totalPages`) |
 | Error handling | `@WebMvcTest` with the `@RestControllerAdvice` | Assert the `ProblemDetail` body (status, title, detail), not only the status code |
-| Pure helpers | plain JUnit | Normalization and trimming, deterministic id generation, `MovieDocument` mapping (embedded people and genre lists) |
+| Pure helpers | plain JUnit | Normalization and trimming, deterministic id generation (golden values computed outside the code), `MovieRules` (every boundary with a fixed `Clock`), `MovieDocument` mapping (embedded people and genre lists) |
 | Seed loader | plain JUnit + Mockito (mock `MovieService`) | Reads the JSON, calls `createMovie` per entry, skips invalid or duplicate entries without failing, does nothing when the catalog is not empty |
 
 The Firestore adapter (`FirestoreMovieRepository`) and `FirestoreConfig` have no automated tests by design (ADR-0003).

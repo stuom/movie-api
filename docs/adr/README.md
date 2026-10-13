@@ -13,5 +13,6 @@ Add a new ADR instead of rewriting history; mark old ones as superseded.
 | [0006](0006-movie-data-model-and-seed-data.md) | Movie data model and seed data | Accepted |
 | [0007](0007-in-memory-search-over-firestore-catalog.md) | In-memory search over a Firestore-backed catalog | Accepted |
 | [0008](0008-quality-gates-and-build-verification.md) | Quality gates and build verification | Accepted |
+| [0009](0009-movie-validation-in-plain-java.md) | Movie validation in plain Java at the service boundary | Accepted |
 
 Template: `.claude/skills/document-change/templates/adr-template.md`

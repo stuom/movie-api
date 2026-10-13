@@ -11,11 +11,11 @@ The movie model itself (fields and validation) is defined in AGENTS.md and ADR-0
 
 ## Layout
 - Collection `movies`, one document per movie, in the `(default)` database (named databases get no free quota).
-- Document id = deterministic hash of `normalize(name) + "|" + year` (for example the first 32 hex characters of SHA-256). Creating with `DocumentReference.create(...)` fails with `ALREADY_EXISTS` if the id is taken, which gives atomic duplicate detection without a transaction. Translate that error to `DuplicateMovieException`.
+- Document id = deterministic hash of `normalize(name) + "|" + year` (`MovieId.derivedFrom`: the first 32 lowercase hex characters of SHA-256 over UTF-8; frozen, see ADR-0006). Creating with `DocumentReference.create(...)` fails with `ALREADY_EXISTS` if the id is taken, which gives atomic duplicate detection without a transaction. Translate that error to `DuplicateMovieException`.
 - Fields (class `MovieDocument`), stored as entered after trimming:
   `name`, `year`, `genres` (list of strings), `ageLimit`, `rating`, `director` (map with `firstName`, `lastName`, or absent), `actors` (list of such maps, order preserved), `synopsis`, `createdAt`.
 - No derived search fields are stored. Normalization is done in memory when searching.
-- `normalize` = trim, collapse inner whitespace, lowercase using `Locale.ROOT`. Keep it in one shared place with unit tests.
+- `normalize` = `TextNormalization.normalize`: Unicode NFC, `strip()`, collapse `\p{javaWhitespace}+` to one space, lowercase using `Locale.ROOT` (NBSP is not whitespace). Never write a second version.
 - Document the collection and fields in `docs/firestore-model.md`.
 
 ## The only two operations (`MovieRepository`)

@@ -9,7 +9,7 @@ Base package: `com.pehmo.movieapi` (Java package names cannot contain hyphens; t
   Run Gradle with a Java 21 JDK as `JAVA_HOME` (or list it in `org.gradle.java.installations.paths` in your user `~/.gradle/gradle.properties`); the build uses a Java 21 toolchain.
   Dependency and plugin versions are declared directly in `build.gradle.kts` (no version catalog); the Spring Boot BOM, imported as a Gradle `platform(...)`, supplies versions for the Spring libraries
   (not the `io.spring.dependency-management` plugin, which also overrides the quality tools' own classpaths, ADR-0008).
-- Bean Validation, springdoc-openapi (Swagger UI)
+- springdoc-openapi (Swagger UI). The movie body is validated in plain Java by `MovieRules`, not with Bean Validation (ADR-0009).
 - **Persistence: Cloud Firestore** (Native mode, `(default)` database, free tier) as a durable store only, accessed with the official
   `com.google.cloud:google-cloud-firestore` Java client (Spring Data Firestore is reactive-only and not used, ADR-0003).
   **Search runs in memory** over a cached copy of the catalog (ADR-0007).
@@ -44,6 +44,8 @@ src/main/java/com/pehmo/movieapi/
   movie/
     web/          MovieController, NewMovieRequest, MovieResponse, MoviePageResponse, PersonDto, MovieMapper
     service/      MovieService (business rules), Movie and Person (domain records),
+                  NewMovie (raw input, all fields nullable), MovieRules (the only home of the movie rules, ADR-0009),
+                  InvalidMovieException + FieldViolation, MovieId (deterministic id), TextNormalization (normalize, trim),
                   MovieSearchCriteria (sealed: exactly one search field or none), MovieSearch (matching, sorting, paging), MoviePage,
                   MovieCatalog (in-memory snapshot of all movies), MovieSeedLoader (loads the sample data on startup)
     persistence/  MovieRepository (interface), FirestoreMovieRepository, MovieDocument (storage mapping)
@@ -80,7 +82,9 @@ Rules:
 
 Rules:
 - All incoming text is trimmed (the sample data has stray leading spaces, for example `" Downey Jr."`).
-- Normalization = trim, collapse inner whitespace, lowercase with `Locale.ROOT`. It is used for the id and for all text matching.
+- Normalization (`TextNormalization.normalize`) = Unicode NFC, trim, collapse inner whitespace, lowercase with `Locale.ROOT`. It is used for the id and for all text matching.
+  Whitespace means `Character.isWhitespace` everywhere (so U+00A0 NBSP is not whitespace). Stored text is only trimmed. The normalization and id algorithm are frozen (ADR-0006).
+- All movie rules live in `MovieRules` (plain Java, ADR-0009): it reports every violation with its field path. Do not duplicate them as Bean Validation annotations on DTOs.
 - Duplicate rule: same normalized `name` + `year` is rejected with `409 Conflict` (the deterministic id makes this atomic).
 - Every field is searchable (see API conventions). Matching text is normalized in memory at search time; nothing extra is stored.
 
@@ -133,19 +137,19 @@ Rules:
 - Use the `(default)` database only: the free tier does not apply to named databases.
 
 ## Naming and code style
-- Names state intent, not mechanism. Good: `findMoviesMatching(MovieSearchCriteria)`, `createMovie(NewMovieRequest)`.
+- Names state intent, not mechanism. Good: `findMoviesMatching(MovieSearchCriteria)`, `createMovie(NewMovie)`.
   Bad: `process`, `handle`, `doIt`, `data`, `tmp`, `util`.
 - Classes: `MovieController`, `MovieService`, `MovieRepository`, `FirestoreMovieRepository`, `MovieResponse`, `NewMovieRequest`, `Person`, `PersonDto`.
 - Booleans read as questions (`isDuplicate`). No abbreviations except well-known ones (`id`, `dto`).
 - Javadoc on every public class and method; explain *why* and any non-obvious rules, not what the code literally does.
 - Methods stay small and do one thing. Prefer early returns over deep nesting. No commented-out code.
-- Custom exceptions carry meaning: `MovieNotFoundException`, `DuplicateMovieException`, `InvalidSearchCriteriaException`.
+- Custom exceptions carry meaning: `MovieNotFoundException`, `DuplicateMovieException`, `InvalidMovieException`, `InvalidSearchCriteriaException`.
 
 ## Testing conventions
 - Test names: `shouldReturn404WhenMovieDoesNotExist`. Body follows Given / When / Then with comments.
 - One behavior per test. No `Thread.sleep`, no dependence on test order or on seed data not created by the test.
 - Build test data with a builder/factory (`MovieTestData.aMovie().withName(...)`), not copy-pasted literals.
-- Unit tests only: service with Mockito (mock `MovieRepository`); controller with `@WebMvcTest`; `MovieSearch` (the core: each search field, paging, ordering), `MovieSearchCriteria` (the one-field rule and validation), normalization, id generation, document mapping, `MovieCatalog` (refresh logic with a mocked repository and a fixed `Clock`) and `MovieSeedLoader` (mocked `MovieService`) directly.
+- Unit tests only: service with Mockito (mock `MovieRepository`); controller with `@WebMvcTest`; `MovieSearch` (the core: each search field, paging, ordering), `MovieSearchCriteria` (the one-field rule and validation), `MovieRules` (every boundary, fixed `Clock`), normalization, id generation (golden ids computed outside the code), document mapping, `MovieCatalog` (refresh logic with a mocked repository and a fixed `Clock`) and `MovieSeedLoader` (mocked `MovieService`) directly.
 - Keep `FirestoreMovieRepository` and `FirestoreConfig` thin (query building and mapping only): they have no automated tests and are excluded from the JaCoCo rule.
   `MovieApiApplication` is excluded too: it only bootstraps Spring, so keep it free of logic (ADR-0008).
 - API tests: the Postman collection in `postman/` (add a movie, list all movies, search with one search field at a time) is written by the `postman-test-writer` agent and run by hand against the deployed service. It is not part of `./gradlew check`. Each run adds one test movie (name starts with `0 Pmtest`) to the real database, and there is no delete endpoint, so leftovers are removed by hand in the Firestore console.

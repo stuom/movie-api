@@ -2,7 +2,8 @@
 
 REST service to list, search and add movies, built with Spring Boot 3 on Java 21 and deployed to Google Cloud Run.
 
-> Status: project skeleton. The service builds, starts and enforces the quality gates; the movie endpoints come in the next slices.
+> Status: early development. The service builds, starts and enforces the quality gates, and the movie domain model
+> (validation rules, text normalization, deterministic id) is in place with unit tests. The movie endpoints come in the next slices.
 
 ## Prerequisites
 - **Java 21 JDK**, discoverable by Gradle: either set `JAVA_HOME` to it, or list its path in

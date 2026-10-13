@@ -37,7 +37,7 @@ Because search is plain Java it can be tested exhaustively with fast unit tests,
 | `page` / `size` | `page >= 0` (default 0), `1 <= size <= 100` (default 20) |
 
 - Person rule detail: a word matches a person if `normalize(firstName)` or `normalize(lastName)` contains it. "ryan", "gosling" and "ryan gosling" all find Ryan Gosling. For `actor`, "ryan wright" finds nothing in a movie whose cast has Ryan Gosling and Robin Wright, because the words must match the same person.
-- `normalize` = trim, collapse inner whitespace, lowercase with `Locale.ROOT`. A word is a whitespace-separated part of the normalized text. Accents are not folded.
+- `normalize` = `TextNormalization.normalize`: Unicode NFC, trim, collapse inner whitespace, lowercase with `Locale.ROOT`. A word is a whitespace-separated part of the normalized text (split on the same `Character.isWhitespace` definition). Accents are not folded.
 - A movie missing the field being searched (no director, no synopsis, no actors) never matches that search.
 - Sorting: `normalize(name)` ascending, then `id`. Response: `items`, `page`, `size`, `totalItems`, `totalPages` (`ceil(totalItems / size)`, 0 when there are no items). A page beyond the last returns empty `items` with the true totals, not an error.
 
