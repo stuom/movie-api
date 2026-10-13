@@ -7,7 +7,7 @@
   "item": [
     {
       "name": "01 Add movie",
-      "description": "POST /api/v1/movies: create (201, Location, trimmed texts), the duplicate rule (409 with movieId), rule violations and unknown fields (400 problem details). Only the first request stores a movie.\n\nEach run of the collection adds exactly one movie named `0 Pmtest <runId>` to the real database. There is no delete endpoint: remove leftovers by hand in the Firestore console.",
+      "description": "POST /api/v1/movies: create (201, Location, trimmed texts), fetching the new movie through its Location (GET /api/v1/movies/{id}, 200 with the same body), an unknown id (404), the duplicate rule (409 with movieId), rule violations and unknown fields (400 problem details). Only the first request stores a movie.\n\nEach run of the collection adds exactly one movie named `0 Pmtest <runId>` to the real database. There is no delete endpoint: remove leftovers by hand in the Firestore console.",
       "item": [
         {
           "name": "POST add a movie - 201 with trimmed fields",
@@ -19,7 +19,10 @@
                 "exec": [
                   "// A fresh run id for every run, so the test movie never collides with an earlier run.",
                   "pm.collectionVariables.set(\"runId\", Date.now().toString(36));",
-                  "pm.collectionVariables.unset(\"movieId\");"
+                  "// Forget the previous run's values, so later requests cannot pass on stale data.",
+                  "[\"movieId\", \"movieLocation\", \"createdMovie\", \"listTotalItems\", \"listItemIds\"].forEach(function (name) {",
+                  "    pm.collectionVariables.unset(name);",
+                  "});"
                 ]
               }
             },
@@ -83,13 +86,18 @@
                   "",
                   "if (pm.response.code === 201 && body && /^[0-9a-f]{32}$/.test(body.id)) {",
                   "    pm.collectionVariables.set(\"movieId\", body.id);",
+                  "    pm.collectionVariables.set(\"createdMovie\", JSON.stringify(body));",
+                  "    const location = pm.response.headers.get(\"Location\") || \"\";",
+                  "    if (/^\\/api\\/v1\\/movies\\/[0-9a-f]{32}$/.test(location)) {",
+                  "        pm.collectionVariables.set(\"movieLocation\", location);",
+                  "    }",
                   "}"
                 ]
               }
             }
           ],
           "request": {
-            "description": "Adds the run's test movie `0 Pmtest {{runId}}` (name, one genre, the director's last name and the synopsis padded with spaces) and saves its id as `movieId`. Its pre-request script sets a fresh `runId`.\n\n**This is the request that adds a movie to the real database** (exactly one per run). Remove it by hand in the Firestore console.",
+            "description": "Adds the run's test movie `0 Pmtest {{runId}}` (name, one genre, the director's last name and the synopsis padded with spaces) and saves its id as `movieId`, its `Location` as `movieLocation` and the 201 body as `createdMovie`. Its pre-request script sets a fresh `runId`.\n\n**This is the request that adds a movie to the real database** (exactly one per run). Remove it by hand in the Firestore console.",
             "method": "POST",
             "header": [
               {
@@ -119,6 +127,74 @@
                 "api",
                 "v1",
                 "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET the added movie by its Location - 200 with the same body",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Without a Location from 'POST add a movie' this asks for an id that cannot exist, so the tests fail clearly.",
+                  "if (!pm.collectionVariables.get(\"movieLocation\")) {",
+                  "    pm.variables.set(\"movieLocation\", \"/api/v1/movies/no-location-from-post-\" + pm.collectionVariables.get(\"runId\"));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"the Location used was saved by 'POST add a movie'\", function () {",
+                  "    pm.expect(pm.collectionVariables.get(\"movieLocation\"), \"movieLocation is set by 'POST add a movie'; run the collection from the start\")",
+                  "        .to.match(/^\\/api\\/v1\\/movies\\/[0-9a-f]{32}$/);",
+                  "});",
+                  "",
+                  "pm.test(\"returns the movie with the id of the added movie\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.id).to.eql(pm.collectionVariables.get(\"movieId\"));",
+                  "});",
+                  "",
+                  "pm.test(\"returns the same body as the 201 response of 'POST add a movie'\", function () {",
+                  "    const created = JSON.parse(pm.collectionVariables.get(\"createdMovie\") || \"null\");",
+                  "    pm.expect(created, \"createdMovie is set by 'POST add a movie'\").to.be.an(\"object\");",
+                  "    pm.expect(body).to.eql(created);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Follows the `Location` of `POST add a movie` (saved as `movieLocation`) and expects the movie exactly as the 201 body returned it. Proves that a created movie is immediately readable from the catalog.",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}{{movieLocation}}",
+              "host": [
+                "{{baseUrl}}{{movieLocation}}"
               ]
             }
           },
@@ -347,6 +423,1090 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "GET a movie with an unknown id - 404 problem",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 404 Not Found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Not Found, status 404, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Not Found\");",
+                  "    pm.expect(body.status).to.eql(404);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies/does-not-exist-\" + pm.collectionVariables.get(\"runId\"));",
+                  "});",
+                  "",
+                  "pm.test(\"detail is 'There is no movie with this id.' and does not repeat the id\", function () {",
+                  "    pm.expect(body.detail).to.eql(\"There is no movie with this id.\");",
+                  "    pm.expect(body.detail).to.not.include(pm.collectionVariables.get(\"runId\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "An id that no movie has (any text that is not a stored id gives 404; there is no separate format check). Expects the 404 problem detail, whose `detail` does not repeat the id.",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies/does-not-exist-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies",
+                "does-not-exist-{{runId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "02 List movies",
+      "description": "GET /api/v1/movies without search fields: the whole catalog a page at a time. Default and explicit page/size, the page shape and totals, the order (name ignoring case, then id), a page past the end, and 400 problem details naming every bad parameter (out of range, not a whole number, repeated, unknown). Stores nothing; relies only on the movie added by '01 Add movie'.",
+      "item": [
+        {
+          "name": "GET list movies with defaults - 200 page 0 size 20 sorted by name",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns the page shape items, page 0, size 20, totalItems and totalPages = ceil(totalItems / size)\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.items).to.be.an(\"array\");",
+                  "    pm.expect(body.page).to.eql(0);",
+                  "    pm.expect(body.size).to.eql(20);",
+                  "    pm.expect(body.totalItems).to.be.a(\"number\");",
+                  "    pm.expect(Number.isInteger(body.totalItems), \"totalItems is an integer\").to.be.true;",
+                  "    pm.expect(body.totalItems, \"the run's test movie exists, so the catalog is not empty\").to.be.at.least(1);",
+                  "    pm.expect(body.totalPages).to.eql(Math.ceil(body.totalItems / 20));",
+                  "});",
+                  "",
+                  "pm.test(\"returns as many items as fit on page 0 (at most 20, the remainder on the last page)\", function () {",
+                  "    const expected = Math.max(0, Math.min(20, body.totalItems - 0 * 20));",
+                  "    pm.expect(body.items).to.have.lengthOf(expected);",
+                  "});",
+                  "",
+                  "pm.test(\"every item has every movie field\", function () {",
+                  "    body.items.forEach(function (item, index) {",
+                  "        const at = \"items[\" + index + \"]\";",
+                  "        pm.expect(item.id, at + \".id\").to.be.a(\"string\").and.match(/^[0-9a-f]{32}$/);",
+                  "        pm.expect(item.name, at + \".name\").to.be.a(\"string\").and.not.empty;",
+                  "        pm.expect(item.year, at + \".year\").to.be.a(\"number\");",
+                  "        pm.expect(item.genres, at + \".genres\").to.be.an(\"array\").that.is.not.empty;",
+                  "        pm.expect(item.ageLimit, at + \".ageLimit\").to.be.a(\"number\");",
+                  "        pm.expect(item.rating, at + \".rating\").to.be.a(\"number\");",
+                  "        pm.expect(item, at).to.have.property(\"director\");",
+                  "        pm.expect(item.actors, at + \".actors\").to.be.an(\"array\");",
+                  "        pm.expect(item, at).to.have.property(\"synopsis\");",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"items are sorted by name ignoring case, then by id\", function () {",
+                  "    // The server compares normalized names by UTF-16 code unit, so compare with < (not localeCompare).",
+                  "    // Normalization: NFC, Java whitespace (Character.isWhitespace, which excludes no-break spaces) collapsed, trimmed, lowercased.",
+                  "    const javaWhitespace = /[\\t\\n\\u000B\\f\\r\\u001C-\\u001F \\u1680\\u2000-\\u2006\\u2008-\\u200A\\u2028\\u2029\\u205F\\u3000]+/g;",
+                  "    const sortKey = function (name) {",
+                  "        return String(name).normalize(\"NFC\").replace(javaWhitespace, \" \").replace(/^ | $/g, \"\").toLowerCase();",
+                  "    };",
+                  "    for (let i = 1; i < body.items.length; i++) {",
+                  "        const previous = body.items[i - 1];",
+                  "        const current = body.items[i];",
+                  "        const a = sortKey(previous.name);",
+                  "        const b = sortKey(current.name);",
+                  "        pm.expect(a < b || (a === b && previous.id < current.id),",
+                  "            \"items[\" + (i - 1) + \"] '\" + previous.name + \"' sorts before items[\" + i + \"] '\" + current.name + \"'\").to.be.true;",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test(\"page 0 contains the run's test movie with the same body as when it was added\", function () {",
+                  "    const movieId = pm.collectionVariables.get(\"movieId\");",
+                  "    pm.expect(movieId, \"movieId is set by 'POST add a movie'; run the collection from the start\").to.match(/^[0-9a-f]{32}$/);",
+                  "    const fixture = body.items.find(function (item) { return item.id === movieId; });",
+                  "    pm.expect(fixture, \"the test movie sorts near the top; if it is missing, more than 20 names (for example old '0 Pmtest' leftovers) sort before it\").to.be.an(\"object\");",
+                  "    pm.expect(fixture).to.eql(JSON.parse(pm.collectionVariables.get(\"createdMovie\")));",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200 && body && Array.isArray(body.items)) {",
+                  "    pm.collectionVariables.set(\"listTotalItems\", String(body.totalItems));",
+                  "    pm.collectionVariables.set(\"listItemIds\", JSON.stringify(body.items.map(function (item) { return item.id; })));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "No parameters: page 0, size 20. Checks the page shape and totals, every item's fields, the order (name ignoring case, then id) and that the run's test movie `0 Pmtest {{runId}}` is on page 0 with the same body as when it was added (its name starts with `0`, so it sorts first). Saves `listTotalItems` and the item ids for the paging requests.",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET list movies page=0&size=2 - first 2 movies",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns the page shape items, page 0, size 2, totalItems and totalPages = ceil(totalItems / size)\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.items).to.be.an(\"array\");",
+                  "    pm.expect(body.page).to.eql(0);",
+                  "    pm.expect(body.size).to.eql(2);",
+                  "    pm.expect(body.totalItems).to.be.a(\"number\");",
+                  "    pm.expect(Number.isInteger(body.totalItems), \"totalItems is an integer\").to.be.true;",
+                  "    pm.expect(body.totalItems, \"the run's test movie exists, so the catalog is not empty\").to.be.at.least(1);",
+                  "    pm.expect(body.totalPages).to.eql(Math.ceil(body.totalItems / 2));",
+                  "});",
+                  "",
+                  "pm.test(\"returns as many items as fit on page 0 (at most 2, the remainder on the last page)\", function () {",
+                  "    const expected = Math.max(0, Math.min(2, body.totalItems - 0 * 2));",
+                  "    pm.expect(body.items).to.have.lengthOf(expected);",
+                  "});",
+                  "",
+                  "pm.test(\"every item has every movie field\", function () {",
+                  "    body.items.forEach(function (item, index) {",
+                  "        const at = \"items[\" + index + \"]\";",
+                  "        pm.expect(item.id, at + \".id\").to.be.a(\"string\").and.match(/^[0-9a-f]{32}$/);",
+                  "        pm.expect(item.name, at + \".name\").to.be.a(\"string\").and.not.empty;",
+                  "        pm.expect(item.year, at + \".year\").to.be.a(\"number\");",
+                  "        pm.expect(item.genres, at + \".genres\").to.be.an(\"array\").that.is.not.empty;",
+                  "        pm.expect(item.ageLimit, at + \".ageLimit\").to.be.a(\"number\");",
+                  "        pm.expect(item.rating, at + \".rating\").to.be.a(\"number\");",
+                  "        pm.expect(item, at).to.have.property(\"director\");",
+                  "        pm.expect(item.actors, at + \".actors\").to.be.an(\"array\");",
+                  "        pm.expect(item, at).to.have.property(\"synopsis\");",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"items are sorted by name ignoring case, then by id\", function () {",
+                  "    // The server compares normalized names by UTF-16 code unit, so compare with < (not localeCompare).",
+                  "    // Normalization: NFC, Java whitespace (Character.isWhitespace, which excludes no-break spaces) collapsed, trimmed, lowercased.",
+                  "    const javaWhitespace = /[\\t\\n\\u000B\\f\\r\\u001C-\\u001F \\u1680\\u2000-\\u2006\\u2008-\\u200A\\u2028\\u2029\\u205F\\u3000]+/g;",
+                  "    const sortKey = function (name) {",
+                  "        return String(name).normalize(\"NFC\").replace(javaWhitespace, \" \").replace(/^ | $/g, \"\").toLowerCase();",
+                  "    };",
+                  "    for (let i = 1; i < body.items.length; i++) {",
+                  "        const previous = body.items[i - 1];",
+                  "        const current = body.items[i];",
+                  "        const a = sortKey(previous.name);",
+                  "        const b = sortKey(current.name);",
+                  "        pm.expect(a < b || (a === b && previous.id < current.id),",
+                  "            \"items[\" + (i - 1) + \"] '\" + previous.name + \"' sorts before items[\" + i + \"] '\" + current.name + \"'\").to.be.true;",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test(\"totalItems equals the default list's totalItems\", function () {",
+                  "    const total = pm.collectionVariables.get(\"listTotalItems\");",
+                  "    pm.expect(total, \"listTotalItems is set by 'GET list movies with defaults'\").to.match(/^[0-9]+$/);",
+                  "    pm.expect(body.totalItems).to.eql(Number(total));",
+                  "});",
+                  "",
+                  "pm.test(\"items are positions 0 to 1 of the default list (the same order, sliced)\", function () {",
+                  "    const ids = JSON.parse(pm.collectionVariables.get(\"listItemIds\") || \"null\");",
+                  "    pm.expect(ids, \"listItemIds is set by 'GET list movies with defaults'\").to.be.an(\"array\");",
+                  "    pm.expect(body.items.map(function (item) { return item.id; })).to.eql(ids.slice(0, 2));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Explicit page and size: at most 2 items, `size` 2, `totalPages` = ceil(totalItems / 2), and the items are the first two of the default list.",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies?page=0&size=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "2"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET list movies page=1&size=2 - movies 3 and 4",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns the page shape items, page 1, size 2, totalItems and totalPages = ceil(totalItems / size)\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.items).to.be.an(\"array\");",
+                  "    pm.expect(body.page).to.eql(1);",
+                  "    pm.expect(body.size).to.eql(2);",
+                  "    pm.expect(body.totalItems).to.be.a(\"number\");",
+                  "    pm.expect(Number.isInteger(body.totalItems), \"totalItems is an integer\").to.be.true;",
+                  "    pm.expect(body.totalItems, \"the run's test movie exists, so the catalog is not empty\").to.be.at.least(1);",
+                  "    pm.expect(body.totalPages).to.eql(Math.ceil(body.totalItems / 2));",
+                  "});",
+                  "",
+                  "pm.test(\"returns as many items as fit on page 1 (at most 2, the remainder on the last page)\", function () {",
+                  "    const expected = Math.max(0, Math.min(2, body.totalItems - 1 * 2));",
+                  "    pm.expect(body.items).to.have.lengthOf(expected);",
+                  "});",
+                  "",
+                  "pm.test(\"every item has every movie field\", function () {",
+                  "    body.items.forEach(function (item, index) {",
+                  "        const at = \"items[\" + index + \"]\";",
+                  "        pm.expect(item.id, at + \".id\").to.be.a(\"string\").and.match(/^[0-9a-f]{32}$/);",
+                  "        pm.expect(item.name, at + \".name\").to.be.a(\"string\").and.not.empty;",
+                  "        pm.expect(item.year, at + \".year\").to.be.a(\"number\");",
+                  "        pm.expect(item.genres, at + \".genres\").to.be.an(\"array\").that.is.not.empty;",
+                  "        pm.expect(item.ageLimit, at + \".ageLimit\").to.be.a(\"number\");",
+                  "        pm.expect(item.rating, at + \".rating\").to.be.a(\"number\");",
+                  "        pm.expect(item, at).to.have.property(\"director\");",
+                  "        pm.expect(item.actors, at + \".actors\").to.be.an(\"array\");",
+                  "        pm.expect(item, at).to.have.property(\"synopsis\");",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"items are sorted by name ignoring case, then by id\", function () {",
+                  "    // The server compares normalized names by UTF-16 code unit, so compare with < (not localeCompare).",
+                  "    // Normalization: NFC, Java whitespace (Character.isWhitespace, which excludes no-break spaces) collapsed, trimmed, lowercased.",
+                  "    const javaWhitespace = /[\\t\\n\\u000B\\f\\r\\u001C-\\u001F \\u1680\\u2000-\\u2006\\u2008-\\u200A\\u2028\\u2029\\u205F\\u3000]+/g;",
+                  "    const sortKey = function (name) {",
+                  "        return String(name).normalize(\"NFC\").replace(javaWhitespace, \" \").replace(/^ | $/g, \"\").toLowerCase();",
+                  "    };",
+                  "    for (let i = 1; i < body.items.length; i++) {",
+                  "        const previous = body.items[i - 1];",
+                  "        const current = body.items[i];",
+                  "        const a = sortKey(previous.name);",
+                  "        const b = sortKey(current.name);",
+                  "        pm.expect(a < b || (a === b && previous.id < current.id),",
+                  "            \"items[\" + (i - 1) + \"] '\" + previous.name + \"' sorts before items[\" + i + \"] '\" + current.name + \"'\").to.be.true;",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test(\"totalItems equals the default list's totalItems\", function () {",
+                  "    const total = pm.collectionVariables.get(\"listTotalItems\");",
+                  "    pm.expect(total, \"listTotalItems is set by 'GET list movies with defaults'\").to.match(/^[0-9]+$/);",
+                  "    pm.expect(body.totalItems).to.eql(Number(total));",
+                  "});",
+                  "",
+                  "pm.test(\"items are positions 2 to 3 of the default list (the same order, sliced)\", function () {",
+                  "    const ids = JSON.parse(pm.collectionVariables.get(\"listItemIds\") || \"null\");",
+                  "    pm.expect(ids, \"listItemIds is set by 'GET list movies with defaults'\").to.be.an(\"array\");",
+                  "    pm.expect(body.items.map(function (item) { return item.id; })).to.eql(ids.slice(2, 4));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "The second page of size 2: the items are positions 2 and 3 of the default list (empty when there are only 1 or 2 movies), with the same totals.",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies?page=1&size=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "2"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET list movies size=100 - 200 accepted",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns the page shape items, page 0, size 100, totalItems and totalPages = ceil(totalItems / size)\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.items).to.be.an(\"array\");",
+                  "    pm.expect(body.page).to.eql(0);",
+                  "    pm.expect(body.size).to.eql(100);",
+                  "    pm.expect(body.totalItems).to.be.a(\"number\");",
+                  "    pm.expect(Number.isInteger(body.totalItems), \"totalItems is an integer\").to.be.true;",
+                  "    pm.expect(body.totalItems, \"the run's test movie exists, so the catalog is not empty\").to.be.at.least(1);",
+                  "    pm.expect(body.totalPages).to.eql(Math.ceil(body.totalItems / 100));",
+                  "});",
+                  "",
+                  "pm.test(\"returns as many items as fit on page 0 (at most 100, the remainder on the last page)\", function () {",
+                  "    const expected = Math.max(0, Math.min(100, body.totalItems - 0 * 100));",
+                  "    pm.expect(body.items).to.have.lengthOf(expected);",
+                  "});",
+                  "",
+                  "pm.test(\"every item has every movie field\", function () {",
+                  "    body.items.forEach(function (item, index) {",
+                  "        const at = \"items[\" + index + \"]\";",
+                  "        pm.expect(item.id, at + \".id\").to.be.a(\"string\").and.match(/^[0-9a-f]{32}$/);",
+                  "        pm.expect(item.name, at + \".name\").to.be.a(\"string\").and.not.empty;",
+                  "        pm.expect(item.year, at + \".year\").to.be.a(\"number\");",
+                  "        pm.expect(item.genres, at + \".genres\").to.be.an(\"array\").that.is.not.empty;",
+                  "        pm.expect(item.ageLimit, at + \".ageLimit\").to.be.a(\"number\");",
+                  "        pm.expect(item.rating, at + \".rating\").to.be.a(\"number\");",
+                  "        pm.expect(item, at).to.have.property(\"director\");",
+                  "        pm.expect(item.actors, at + \".actors\").to.be.an(\"array\");",
+                  "        pm.expect(item, at).to.have.property(\"synopsis\");",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"items are sorted by name ignoring case, then by id\", function () {",
+                  "    // The server compares normalized names by UTF-16 code unit, so compare with < (not localeCompare).",
+                  "    // Normalization: NFC, Java whitespace (Character.isWhitespace, which excludes no-break spaces) collapsed, trimmed, lowercased.",
+                  "    const javaWhitespace = /[\\t\\n\\u000B\\f\\r\\u001C-\\u001F \\u1680\\u2000-\\u2006\\u2008-\\u200A\\u2028\\u2029\\u205F\\u3000]+/g;",
+                  "    const sortKey = function (name) {",
+                  "        return String(name).normalize(\"NFC\").replace(javaWhitespace, \" \").replace(/^ | $/g, \"\").toLowerCase();",
+                  "    };",
+                  "    for (let i = 1; i < body.items.length; i++) {",
+                  "        const previous = body.items[i - 1];",
+                  "        const current = body.items[i];",
+                  "        const a = sortKey(previous.name);",
+                  "        const b = sortKey(current.name);",
+                  "        pm.expect(a < b || (a === b && previous.id < current.id),",
+                  "            \"items[\" + (i - 1) + \"] '\" + previous.name + \"' sorts before items[\" + i + \"] '\" + current.name + \"'\").to.be.true;",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test(\"totalItems equals the default list's totalItems\", function () {",
+                  "    const total = pm.collectionVariables.get(\"listTotalItems\");",
+                  "    pm.expect(total, \"listTotalItems is set by 'GET list movies with defaults'\").to.match(/^[0-9]+$/);",
+                  "    pm.expect(body.totalItems).to.eql(Number(total));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "The largest allowed page size is accepted (not clamped): `size` 100.",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies?size=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ],
+              "query": [
+                {
+                  "key": "size",
+                  "value": "100"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET list movies page=9999&size=2 - 200 empty items with true totals",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns the page shape items, page 9999, size 2, totalItems and totalPages = ceil(totalItems / size)\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.items).to.be.an(\"array\");",
+                  "    pm.expect(body.page).to.eql(9999);",
+                  "    pm.expect(body.size).to.eql(2);",
+                  "    pm.expect(body.totalItems).to.be.a(\"number\");",
+                  "    pm.expect(Number.isInteger(body.totalItems), \"totalItems is an integer\").to.be.true;",
+                  "    pm.expect(body.totalItems, \"the run's test movie exists, so the catalog is not empty\").to.be.at.least(1);",
+                  "    pm.expect(body.totalPages).to.eql(Math.ceil(body.totalItems / 2));",
+                  "});",
+                  "",
+                  "pm.test(\"returns as many items as fit on page 9999 (at most 2, the remainder on the last page)\", function () {",
+                  "    const expected = Math.max(0, Math.min(2, body.totalItems - 9999 * 2));",
+                  "    pm.expect(body.items).to.have.lengthOf(expected);",
+                  "});",
+                  "",
+                  "pm.test(\"every item has every movie field\", function () {",
+                  "    body.items.forEach(function (item, index) {",
+                  "        const at = \"items[\" + index + \"]\";",
+                  "        pm.expect(item.id, at + \".id\").to.be.a(\"string\").and.match(/^[0-9a-f]{32}$/);",
+                  "        pm.expect(item.name, at + \".name\").to.be.a(\"string\").and.not.empty;",
+                  "        pm.expect(item.year, at + \".year\").to.be.a(\"number\");",
+                  "        pm.expect(item.genres, at + \".genres\").to.be.an(\"array\").that.is.not.empty;",
+                  "        pm.expect(item.ageLimit, at + \".ageLimit\").to.be.a(\"number\");",
+                  "        pm.expect(item.rating, at + \".rating\").to.be.a(\"number\");",
+                  "        pm.expect(item, at).to.have.property(\"director\");",
+                  "        pm.expect(item.actors, at + \".actors\").to.be.an(\"array\");",
+                  "        pm.expect(item, at).to.have.property(\"synopsis\");",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"items are sorted by name ignoring case, then by id\", function () {",
+                  "    // The server compares normalized names by UTF-16 code unit, so compare with < (not localeCompare).",
+                  "    // Normalization: NFC, Java whitespace (Character.isWhitespace, which excludes no-break spaces) collapsed, trimmed, lowercased.",
+                  "    const javaWhitespace = /[\\t\\n\\u000B\\f\\r\\u001C-\\u001F \\u1680\\u2000-\\u2006\\u2008-\\u200A\\u2028\\u2029\\u205F\\u3000]+/g;",
+                  "    const sortKey = function (name) {",
+                  "        return String(name).normalize(\"NFC\").replace(javaWhitespace, \" \").replace(/^ | $/g, \"\").toLowerCase();",
+                  "    };",
+                  "    for (let i = 1; i < body.items.length; i++) {",
+                  "        const previous = body.items[i - 1];",
+                  "        const current = body.items[i];",
+                  "        const a = sortKey(previous.name);",
+                  "        const b = sortKey(current.name);",
+                  "        pm.expect(a < b || (a === b && previous.id < current.id),",
+                  "            \"items[\" + (i - 1) + \"] '\" + previous.name + \"' sorts before items[\" + i + \"] '\" + current.name + \"'\").to.be.true;",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test(\"totalItems equals the default list's totalItems\", function () {",
+                  "    const total = pm.collectionVariables.get(\"listTotalItems\");",
+                  "    pm.expect(total, \"listTotalItems is set by 'GET list movies with defaults'\").to.match(/^[0-9]+$/);",
+                  "    pm.expect(body.totalItems).to.eql(Number(total));",
+                  "});",
+                  "",
+                  "pm.test(\"items is empty\", function () {",
+                  "    pm.expect(body.items).to.eql([]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "A page past the end is not an error: `200`, empty `items`, and the true `totalItems` and `totalPages`.",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies?page=9999&size=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "9999"
+                },
+                {
+                  "key": "size",
+                  "value": "2"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET list movies size=101 - 400 size out of range",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name size as must be between 1 and 100\", function () {",
+                  "    pm.expect(body.violations).to.eql([{ field: \"size\", message: \"must be between 1 and 100\" }]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "One above the largest page size: rejected, not clamped.",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies?size=101",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ],
+              "query": [
+                {
+                  "key": "size",
+                  "value": "101"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET list movies size=0 - 400 size out of range",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name size as must be between 1 and 100\", function () {",
+                  "    pm.expect(body.violations).to.eql([{ field: \"size\", message: \"must be between 1 and 100\" }]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "A page size below 1 is rejected.",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies?size=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ],
+              "query": [
+                {
+                  "key": "size",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET list movies page=-1 - 400 page below 0",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name page as must be 0 or more\", function () {",
+                  "    pm.expect(body.violations).to.eql([{ field: \"page\", message: \"must be 0 or more\" }]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Pages are numbered from 0; a negative page is rejected.",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies?page=-1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "-1"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET list movies page=abc - 400 not a whole number",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name page as must be a whole number\", function () {",
+                  "    pm.expect(body.violations).to.eql([{ field: \"page\", message: \"must be a whole number\" }]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "A page that is not a whole number is rejected.",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies?page=abc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "abc"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET list movies page=1&page=2 - 400 page given twice",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name page as must be given only once\", function () {",
+                  "    pm.expect(body.violations).to.eql([{ field: \"page\", message: \"must be given only once\" }]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "A parameter given more than once is rejected.",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies?page=1&page=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page",
+                  "value": "2"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET list movies pgae=2 - 400 unknown parameter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name pgae as not a known parameter\", function () {",
+                  "    pm.expect(body.violations).to.eql([{ field: \"pgae\", message: \"is not a known parameter\" }]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "A misspelled parameter is rejected instead of silently returning page 0.",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies?pgae=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ],
+              "query": [
+                {
+                  "key": "pgae",
+                  "value": "2"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET list movies page=-1&size=101&pgae=2 - 400 naming every problem in order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name page, size and pgae in that order\", function () {",
+                  "    pm.expect(body.violations).to.eql([",
+                  "        { field: \"page\", message: \"must be 0 or more\" },",
+                  "        { field: \"size\", message: \"must be between 1 and 100\" },",
+                  "        { field: \"pgae\", message: \"is not a known parameter\" }",
+                  "    ]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Several problems at once: every one is reported, in the fixed order page, size, then unknown parameters (the example in docs/api.md).",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies?page=-1&size=101&pgae=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "-1"
+                },
+                {
+                  "key": "size",
+                  "value": "101"
+                },
+                {
+                  "key": "pgae",
+                  "value": "2"
+                }
+              ]
+            }
+          },
+          "response": []
         }
       ]
     }
@@ -387,6 +1547,22 @@
     },
     {
       "key": "movieId",
+      "value": ""
+    },
+    {
+      "key": "movieLocation",
+      "value": ""
+    },
+    {
+      "key": "createdMovie",
+      "value": ""
+    },
+    {
+      "key": "listTotalItems",
+      "value": ""
+    },
+    {
+      "key": "listItemIds",
       "value": ""
     }
   ]
