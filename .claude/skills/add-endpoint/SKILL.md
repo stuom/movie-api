@@ -40,4 +40,4 @@ Follow the `document-change` skill (ask the `doc-writer` agent to do the heavy l
 Commit once with a conventional message, for example `feat(movies): add year range search filters`.
 
 ## Finish
-Report to the user: what was built, test and gate results, review findings and how they were resolved, decisions that got an ADR, and suggested next slice. If the slice adds a query shape and the user deploys, remind them to run the smoke test from the `deploy-cloud-run` skill.
+Report to the user: what was built, test and gate results, review findings and how they were resolved, decisions that got an ADR, and suggested next slice. If the contract changed, ask the `postman-test-writer` agent to update the Postman collection, and after a deploy remind the user to run it.

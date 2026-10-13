@@ -42,9 +42,9 @@ The file has suspected mistakes (stray spaces, typos, wrong years): report them 
 
 ## Testing
 There is no emulator or integration-test suite (ADR-0003). Therefore:
-- Keep `FirestoreMovieRepository` thin: three methods plus mapping through `MovieDocument`. Put anything with real logic (normalization, id generation, document mapping) in small pure classes with unit tests.
+- Keep `FirestoreMovieRepository` thin: four methods plus mapping through `MovieDocument`. Put anything with real logic (normalization, id generation, document mapping) in small pure classes with unit tests.
 - `MovieCatalog`, `MovieService` and the seed loader are unit tested with a mocked `MovieRepository` / `MovieService` and a fixed `Clock`.
-- The adapter is verified by the smoke test after each deploy.
+- The adapter is verified by the Postman collection after each deploy.
 
 ## Cost awareness (free tier)
 The project's free database includes 50,000 reads, 20,000 writes and 20,000 deletes per day and 1 GiB storage.

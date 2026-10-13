@@ -20,6 +20,7 @@ The user provided a sample dataset (`movies-compact.json`, 20 movies) that defin
 - Genres are free text for now.
 - The document id is a deterministic hash of normalized `name` + `year`, which also enforces uniqueness (ADR-0003).
 - Sample data is stored at `src/main/resources/seed/movies.json` and loaded by `MovieSeedLoader` on startup when `app.seed.enabled=true` and the loaded catalog is empty. Entries go through `MovieService.createMovie`; invalid or duplicate entries are logged and skipped.
+- The API only lists, searches and adds movies: no update and no delete endpoint. The service is deployed unauthenticated, so write access is limited to creating new movies. Corrections and removals are done by hand in the Firestore console (after which the catalog reloads within the refresh interval).
 - Suspected mistakes in the dataset are reported to the user, not silently corrected.
 
 ## Consequences

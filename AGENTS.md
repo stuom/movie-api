@@ -6,6 +6,7 @@ Base package: `com.pehmo.movieapi` (Java package names cannot contain hyphens; t
 
 ## Tech stack
 - Java 21, Spring Boot 3.x (Spring MVC), **Gradle** (Kotlin DSL). Always use the wrapper `./gradlew`, never a global `gradle`.
+  Dependency and plugin versions are declared directly in `build.gradle.kts` (no version catalog); Spring Boot's dependency management supplies versions for the Spring libraries.
 - Bean Validation, springdoc-openapi (Swagger UI)
 - **Persistence: Cloud Firestore** (Native mode, `(default)` database, free tier) as a durable store only, accessed with the official
   `com.google.cloud:google-cloud-firestore` Java client (Spring Data Firestore is reactive-only and not used, ADR-0003).
@@ -24,7 +25,7 @@ Base package: `com.pehmo.movieapi` (Java package names cannot contain hyphens; t
 | Deploy to Cloud Run (runs `check` first) | `./gradlew deployCloudRun` |
 
 Unit tests are named `*Test` and live in `src/test`. Always finish a task with `./gradlew check`.
-By design there is no local-run, emulator or integration-test setup: behavior is covered by unit tests, and storage behavior by the manual post-deploy smoke test.
+By design there is no local-run, emulator or integration-test setup: behavior is covered by unit tests, and the deployed service is verified with the Postman collection in `postman/` (see Testing conventions).
 
 ## Architecture
 Package by feature, layered inside the feature. Dependencies point inward only:
@@ -33,7 +34,6 @@ Search logic lives in the service layer as plain Java, so it is fully unit-testa
 
 ```
 build.gradle.kts, settings.gradle.kts, gradle.properties   build and deployment settings
-gradle/libs.versions.toml                                  dependency versions
 Dockerfile, .dockerignore, .gcloudignore                   container build for Cloud Run
 src/main/java/com/pehmo/movieapi/
   MovieApiApplication.java
@@ -46,6 +46,7 @@ src/main/java/com/pehmo/movieapi/
   common/         error handling (@RestControllerAdvice), Firestore configuration
 src/main/resources/seed/movies.json   sample data (the provided movies-compact.json)
 src/test/java/                     unit tests (*Test)
+postman/                           Postman collection + environment (API tests against the deployed service)
 docs/  api.md, deployment.md, firestore-model.md, adr/, ai-log/
 ```
 
@@ -81,7 +82,7 @@ Rules:
 
 ## Sample data
 - `movies-compact.json` (20 movies, provided by the user) defines the data shape. It is an array of objects with the same shape as the `POST` body. Keep a copy at `src/main/resources/seed/movies.json`.
-- `MovieSeedLoader` runs on startup when `app.seed.enabled=true` and the loaded `MovieCatalog` is empty.
+- `MovieSeedLoader` runs on startup when `app.seed.enabled=true` and the loaded `MovieCatalog` is empty. Deleting every movie therefore brings the sample data back on the next startup; set `app.seed.enabled=false` if that is unwanted.
   It passes each entry through `MovieService.createMovie`, so seed data gets the same validation, trimming and duplicate check as API input. Invalid or duplicate entries are logged and skipped.
 - The file contains likely mistakes (typos, wrong release years). Do not silently correct them: list the suspected errors for the user and let them decide.
 
@@ -108,6 +109,7 @@ Rules:
 - Response: `{ "items": [...], "page": 0, "size": 20, "totalItems": 57, "totalPages": 3 }`. Order is fixed: name ascending (case-insensitive), then id. Items contain all movie fields.
 - Examples (one field each): `GET /api/v1/movies?viewerAge=12`, `GET /api/v1/movies?minRating=4`, `GET /api/v1/movies?minYear=2000&maxYear=2009`, `GET /api/v1/movies?genre=sci-fi`, `GET /api/v1/movies?actor=harrison ford`, `GET /api/v1/movies?director=spielberg`, `GET /api/v1/movies?synopsis=missing father`.
 - `GET /api/v1/movies/{id}` fetch one. `POST /api/v1/movies` create -> `201 Created` + `Location` header + created body.
+  There is deliberately no update or delete endpoint: the service is public and unauthenticated, so it only lists, searches and adds (ADR-0006).
   Example `POST` body:
   ```json
   {"name": "Aliens", "year": 1986, "genres": ["Action", "Adventure", "Sci-fi"], "ageLimit": 16, "rating": 5,
@@ -141,6 +143,7 @@ Rules:
 - Build test data with a builder/factory (`MovieTestData.aMovie().withName(...)`), not copy-pasted literals.
 - Unit tests only: service with Mockito (mock `MovieRepository`); controller with `@WebMvcTest`; `MovieSearch` (the core: each search field, paging, ordering), `MovieSearchCriteria` (the one-field rule and validation), normalization, id generation, document mapping, `MovieCatalog` (refresh logic with a mocked repository and a fixed `Clock`) and `MovieSeedLoader` (mocked `MovieService`) directly.
 - Keep `FirestoreMovieRepository` and `FirestoreConfig` thin (query building and mapping only): they have no automated tests and are excluded from the JaCoCo rule.
+- API tests: the Postman collection in `postman/` (add a movie, list all movies, search with one search field at a time) is written by the `postman-test-writer` agent and run by hand against the deployed service. It is not part of `./gradlew check`. Each run adds one test movie (name starts with `0 Pmtest`) to the real database, and there is no delete endpoint, so leftovers are removed by hand in the Firestore console.
 - JaCoCo minimum: 80% line coverage on the remaining `main` code. Meaningful assertions matter more than the number.
 
 ## Deployment (Google Cloud Run)
@@ -154,7 +157,7 @@ Rules:
   Details and one-time setup are in the `deploy-cloud-run` skill and `docs/deployment.md`.
 
 ## Documentation
-- `README.md`: what it is, prerequisites (Java 21), how to run the tests, link to the deployed Swagger UI, link to the deployment doc.
+- `README.md`: what it is, prerequisites (Java 21), how to run the unit tests and the Postman collection, link to the deployed Swagger UI, link to the deployment doc.
 - `docs/api.md`: human-readable contract with request/response examples (curl).
 - `docs/firestore-model.md`: collection layout and document fields. `docs/api.md` also documents the search semantics.
 - `docs/adr/NNNN-title.md`: one short ADR per significant decision. ADR-0001 to ADR-0007 exist as drafts; update them instead of duplicating.
@@ -169,14 +172,14 @@ Rules:
 
 ## Definition of done
 - `./gradlew check` passes with no new warnings.
-- New behavior has unit tests (each new search field: matching, non-matching and edge cases, plus the one-field rule). After a deploy, smoke-test list, one filter and create.
+- New behavior has unit tests (each new search field: matching, non-matching and edge cases, plus the one-field rule). After a deploy, the Postman collection passes.
 - OpenAPI annotations, `docs/api.md`, `docs/firestore-model.md`, Javadoc and README are current.
 - An ADR exists for every significant design decision. The AI log entry for the slice is written.
 
 ## Boundaries
-- Ask first: new dependencies, changes to the public API contract, the domain model, search semantics, any cloud command that creates or changes resources.
+- Ask first: running the Postman collection against the deployed service (each run adds one test movie to the real database), new dependencies, changes to the public API contract, the domain model, search semantics, any cloud command that creates or changes resources.
 - Never: commit secrets or credentials, disable linters or tests to get a green build, expose Firestore types in the API, swallow exceptions silently, add filtered Firestore queries or indexes (search stays in memory).
 
 ## Project agents and skills
-Agents (`.claude/agents/`): `architect`, `unit-test-writer`, `doc-writer`, `code-reviewer`.
+Agents (`.claude/agents/`): `architect`, `unit-test-writer`, `postman-test-writer`, `doc-writer`, `code-reviewer`.
 Skills (`.claude/skills/`): `add-endpoint` (end-to-end slice workflow), `firestore-persistence`, `movie-search`, `write-tests`, `document-change`, `deploy-cloud-run`.

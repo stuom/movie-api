@@ -12,7 +12,7 @@ The service must be REST-based, written in Java with a modern framework, easy fo
 3. **Maven vs Gradle** as the build tool: both are mainstream. Gradle's Kotlin DSL gives concise custom tasks (for example the one-line deployment) and good incremental builds.
 
 ## Decision
-Spring Boot 3.x with Spring MVC on Java 21, built with Gradle (Kotlin DSL) and the Gradle wrapper, with dependency versions in a version catalog.
+Spring Boot 3.x with Spring MVC on Java 21, built with Gradle (Kotlin DSL) and the Gradle wrapper. Versions are declared directly in `build.gradle.kts`: with one build file and few dependencies a version catalog (`gradle/libs.versions.toml`) would add a file without adding clarity, and it can be introduced later if the build grows.
 
 ## Consequences
 - Familiar conventions help new contributors; Swagger UI comes from springdoc-openapi.

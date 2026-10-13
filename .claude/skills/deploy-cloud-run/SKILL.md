@@ -1,6 +1,6 @@
 ---
 name: deploy-cloud-run
-description: Set up and run one-command deployment of the Movie API to Google Cloud Run (project movie-api-511411) with Gradle, Dockerfile and gcloud, including Firestore database creation and service account setup, cost guardrails and smoke tests. Use whenever the user mentions deploying, Cloud Run, Google Cloud, GCP, gcloud, Docker, containerizing, going live, service accounts or the deployment document.
+description: Set up and run one-command deployment of the Movie API to Google Cloud Run (project movie-api-511411) with Gradle, Dockerfile and gcloud, including Firestore database creation and service account setup, cost guardrails and verification with the Postman collection. Use whenever the user mentions deploying, Cloud Run, Google Cloud, GCP, gcloud, Docker, containerizing, going live, service accounts or the deployment document.
 ---
 
 # Deploy to Google Cloud Run with one command
@@ -61,13 +61,13 @@ Choose a Tier 1 Cloud Run pricing region; Google quotes the Cloud Run free tier 
 Firestore's free quota (1 GiB, 50,000 reads, 20,000 writes and 20,000 deletes per day) applies to the single free database per project.
 Quotas and prices change: tell the user to check the Cloud Run and Firestore pricing pages, and record the date checked in `docs/deployment.md`.
 
-## Smoke test after each deploy
+## Verify after each deploy (Postman)
 Use the service URL printed by gcloud (or `gcloud run services describe movie-api --region us-central1 --format 'value(status.url)'`).
-Keep it short, with curl against the real service:
-1. `GET /api/v1/movies` returns the seeded movies (this proves the Firestore connection and permissions).
-2. One numeric search, for example `?viewerAge=12`, and one text search, for example `?actor=ford`; also check that two fields at once, for example `?actor=ford&director=spielberg`, return `400`.
-3. `POST` a new movie, then find it with `?name=` and fetch it by the `Location` URL.
-4. Open `URL/swagger-ui.html`.
+1. Import `postman/movie-api.postman_collection.json` and `postman/movie-api.postman_environment.json` into Postman and set the environment variable `baseUrl` to the service URL (no trailing slash).
+2. Run the whole collection with the Collection Runner. It adds one test movie, lists movies and searches with one field at a time (see `postman/README.md`). All tests should pass.
+3. Open `URL/swagger-ui.html` once to check the generated documentation.
+Each run adds one test movie to the real database (name starts with `0 Pmtest`); remove leftovers by hand in the Firestore console now and then.
+If the list request fails with `PERMISSION_DENIED` or `NOT_FOUND`, see Troubleshooting.
 
 ## Troubleshooting
 - **Build fails with a permission error** on the first deploy: the account Cloud Build runs as needs build permissions. Grant the Compute Engine default service account the `roles/cloudbuild.builds.builder` role (ask the user first), then retry.
