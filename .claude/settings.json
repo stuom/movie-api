@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ./gradlew ] && ./gradlew -q spotlessApply || true"
+          }
+        ]
+      }
+    ]
+  }
+}

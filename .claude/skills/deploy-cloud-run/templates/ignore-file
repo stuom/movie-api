@@ -1,0 +1,13 @@
+# Copy this file to both .dockerignore and .gcloudignore.
+# Keeps the upload to Cloud Build small and the image free of local clutter.
+.git
+.gitignore
+.gradle/
+build/
+out/
+.idea/
+*.iml
+.vscode/
+.claude/
+docs/
+*.md
