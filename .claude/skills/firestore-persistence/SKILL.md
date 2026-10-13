@@ -1,6 +1,6 @@
 ---
 name: firestore-persistence
-description: Conventions for the Cloud Firestore storage layer of the Movie API - document layout, deterministic ids, the three allowed operations (create, get by id, read all), the in-memory MovieCatalog that loads from it, seed data and free-tier cost. Use whenever code touches MovieRepository, FirestoreMovieRepository, MovieDocument, MovieCatalog, seed data, or the user mentions Firestore, database, storage, persistence or read costs.
+description: Conventions for the Cloud Firestore storage layer of the Movie API - document layout, deterministic ids, the two allowed operations (create, read all), the in-memory MovieCatalog that loads from it, seed data and free-tier cost. Use whenever code touches MovieRepository, FirestoreMovieRepository, MovieDocument, MovieCatalog, seed data, or the user mentions Firestore, database, storage, persistence or read costs.
 ---
 
 # Firestore storage for the Movie API
@@ -18,10 +18,10 @@ The movie model itself (fields and validation) is defined in AGENTS.md and ADR-0
 - `normalize` = trim, collapse inner whitespace, lowercase using `Locale.ROOT`. Keep it in one shared place with unit tests.
 - Document the collection and fields in `docs/firestore-model.md`.
 
-## The only three operations (`MovieRepository`)
+## The only two operations (`MovieRepository`)
 - `create(Movie)`: `DocumentReference.create(...)`; map `ALREADY_EXISTS` to `DuplicateMovieException`.
-- `findById(String id)`: `document(id).get()`; absent -> empty result.
 - `findAll()`: read the whole `movies` collection, map each document with `MovieDocument`.
+`MovieRepository` has no `findById`: get by id reads from the `MovieCatalog` snapshot, so it costs no reads and sees the same data as search (ADR-0007).
 Do not add filtered queries, `orderBy`, `offset` or indexes. If a feature seems to need one, it belongs in `MovieSearch` instead (ADR-0007).
 
 ## Client setup (`common/FirestoreConfig`)
@@ -33,7 +33,7 @@ Do not add key files or project-specific settings. Keep this class trivial.
 - Loads via `MovieRepository.findAll()` at startup. If the first load fails, let startup fail loudly (usually a permission or database-creation problem).
 - After a successful create, publish a new snapshot that includes the movie (keep the original load time).
 - Reloads when the snapshot is older than `app.catalog.refresh-interval` (default 60 minutes), using an injected `Clock`. Only one thread reloads at a time. If a refresh fails, keep serving the old snapshot, log a warning and retry at most once a minute.
-- `isEmpty()` serves the seed loader; lookups by id use the snapshot.
+- `isEmpty()` serves the seed loader; `MovieCatalog.findById(id)` looks the movie up in the snapshot (it triggers the same refresh check as search).
 
 ## Seed data
 `MovieSeedLoader` (in `movie/service`, an `ApplicationRunner`) reads `src/main/resources/seed/movies.json` (the 20 movies from the provided `movies-compact.json`) when `app.seed.enabled=true` and the catalog is empty.
@@ -42,7 +42,7 @@ The file has suspected mistakes (stray spaces, typos, wrong years): report them 
 
 ## Testing
 There is no emulator or integration-test suite (ADR-0003). Therefore:
-- Keep `FirestoreMovieRepository` thin: four methods plus mapping through `MovieDocument`. Put anything with real logic (normalization, id generation, document mapping) in small pure classes with unit tests.
+- Keep `FirestoreMovieRepository` thin: two methods plus mapping through `MovieDocument`. Put anything with real logic (normalization, id generation, document mapping) in small pure classes with unit tests.
 - `MovieCatalog`, `MovieService` and the seed loader are unit tested with a mocked `MovieRepository` / `MovieService` and a fixed `Clock`.
 - The adapter is verified by the Postman collection after each deploy.
 

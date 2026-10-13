@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-13
-- **Updated:** 2026-10-13 (all fields are searchable, see ADR-0007; no extra search fields are stored)
+- **Updated:** 2026-10-13 (all fields are searchable, see ADR-0007; no extra search fields are stored; re-seeding after deleting every movie made explicit)
 
 ## Context
 The user provided a sample dataset (`movies-compact.json`, 20 movies) that defines the shape of a movie: `name`, `year`, a list of `genres`, `ageLimit`, `rating`, a `director` (first and last name), a list of `actors` (first and last name) and a `synopsis`. The dataset is also the natural content for a demo deployment. It contains typos and likely wrong values (for example the genre "Familty") and stray whitespace in names.
@@ -18,7 +18,7 @@ The user provided a sample dataset (`movies-compact.json`, 20 movies) that defin
 - A movie is one Firestore document with embedded `director` (a `Person`), `actors` (list of `Person`) and `genres` (list of strings), using the dataset's field names. No derived search fields are stored; text is normalized in memory when searching (ADR-0007).
 - Validation: `name` 1-200 chars, `year` 1888..current year + 5, `genres` 1-5 entries of 1-50 chars, `ageLimit` 0-18, `rating` 1-5, `actors` at most 30, `synopsis` at most 2000, person names 1-100 chars. All text is trimmed.
 - Genres are free text for now.
-- The document id is a deterministic hash of normalized `name` + `year`, which also enforces uniqueness (ADR-0003).
+- The document id is a deterministic hash of normalized `name` + `year`. It also enforces uniqueness: Firestore's `create` fails when the id already exists, so duplicate detection is atomic without a transaction, and the failure is returned as `409 Conflict`.
 - Sample data is stored at `src/main/resources/seed/movies.json` and loaded by `MovieSeedLoader` on startup when `app.seed.enabled=true` and the loaded catalog is empty. Entries go through `MovieService.createMovie`; invalid or duplicate entries are logged and skipped.
 - The API only lists, searches and adds movies: no update and no delete endpoint. The service is deployed unauthenticated, so write access is limited to creating new movies. Corrections and removals are done by hand in the Firestore console (after which the catalog reloads within the refresh interval).
 - Suspected mistakes in the dataset are reported to the user, not silently corrected.
@@ -29,3 +29,4 @@ The user provided a sample dataset (`movies-compact.json`, 20 movies) that defin
 - Free-text genres allow inconsistent spellings ("Sci-fi" vs "Science Fiction"). A controlled vocabulary or a genre endpoint can be added later with a new ADR.
 - Actors, director and synopsis are searched in memory (ADR-0007), so adding a filter on any field needs no schema or index change.
 - The seed file doubles as an example of a valid request body and as test material.
+- Deleting every movie by hand brings the sample data back on the next startup, because the catalog is then empty. Set `app.seed.enabled=false` if that is unwanted.

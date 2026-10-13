@@ -1,6 +1,6 @@
 # ADR-0005: Name prefix search and composite indexes
 
-> Superseded: the requirement grew to searching every field in combination, which Firestore queries cannot do. Kept for history.
+> Superseded: the requirement grew to searching every field (one field per request), including substring and multi-word matching that Firestore queries cannot do. Kept for history.
 
 - **Status:** Superseded by [ADR-0007](0007-in-memory-search-over-firestore-catalog.md)
 - **Date:** 2026-10-12

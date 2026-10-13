@@ -16,7 +16,7 @@ Data must survive restarts, and the service must run on the Google Cloud free ti
 Client choice for Firestore: Spring Data Firestore only offers reactive repositories, which conflicts with Spring MVC, so the plain `google-cloud-firestore` Java client is used behind our own `MovieRepository` interface.
 
 ## Decision
-Use Cloud Firestore (Native mode) in the `(default)` database, accessed with the official Java client through a `MovieRepository` interface implemented by `FirestoreMovieRepository`. Firestore only stores and returns movies (create, read one, read all); searching is done in memory (ADR-0007). Unit tests mock the repository interface. The runtime service account has only `roles/datastore.user`.
+Use Cloud Firestore (Native mode) in the `(default)` database, accessed with the official Java client through a `MovieRepository` interface implemented by `FirestoreMovieRepository`. Firestore only stores and returns movies (create one, read all); searching and lookups by id are done in memory (ADR-0007). Unit tests mock the repository interface. The runtime service account has only `roles/datastore.user`.
 
 ## Consequences
 - Data is persistent; no credentials to manage.
@@ -25,5 +25,5 @@ Use Cloud Firestore (Native mode) in the `(default)` database, accessed with the
 - The database location is permanent once created.
 - Each movie, including its actors and director, is a single document (ADR-0006).
 - Because there are no filtered queries, no composite indexes are needed.
-- To keep the project simple there is no emulator and no integration-test suite. The Firestore adapter has no automated tests, so it is kept thin (create, get, list all) and verified by the Postman collection after deploy. Add emulator-based tests if the storage logic grows.
+- To keep the project simple there is no emulator and no integration-test suite. The Firestore adapter has no automated tests, so it is kept thin (create, list all) and verified by the Postman collection after deploy. Add emulator-based tests if the storage logic grows.
 - Switching to another store later means writing a new `MovieRepository` implementation; the service and API stay unchanged.

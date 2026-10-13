@@ -108,7 +108,7 @@ Rules:
 - A *word* is a whitespace-separated part of the text. Text parameters are trimmed; a blank value counts as not provided. Accents are not folded.
 - Response: `{ "items": [...], "page": 0, "size": 20, "totalItems": 57, "totalPages": 3 }`. Order is fixed: name ascending (case-insensitive), then id. Items contain all movie fields.
 - Examples (one field each): `GET /api/v1/movies?viewerAge=12`, `GET /api/v1/movies?minRating=4`, `GET /api/v1/movies?minYear=2000&maxYear=2009`, `GET /api/v1/movies?genre=sci-fi`, `GET /api/v1/movies?actor=harrison ford`, `GET /api/v1/movies?director=spielberg`, `GET /api/v1/movies?synopsis=missing father`.
-- `GET /api/v1/movies/{id}` fetch one. `POST /api/v1/movies` create -> `201 Created` + `Location` header + created body.
+- `GET /api/v1/movies/{id}` fetch one (from the catalog, like search). `POST /api/v1/movies` create -> `201 Created` + `Location` header + created body.
   There is deliberately no update or delete endpoint: the service is public and unauthenticated, so it only lists, searches and adds (ADR-0006).
   Example `POST` body:
   ```json
@@ -121,7 +121,7 @@ Rules:
 - Every endpoint is annotated for OpenAPI (summary, parameters, response codes) and described in `docs/api.md`. Adding a filter means updating this table, `MovieSearchCriteria`, `MovieSearch`, the OpenAPI annotations, `docs/api.md` and the tests (see the `movie-search` skill).
 
 ## Persistence and catalog rules (details in the `firestore-persistence` and `movie-search` skills)
-- Firestore is the **durable store only**. Allowed operations: create one movie (atomic, via the deterministic id), read one by id, read all movies. Do not add filtered Firestore queries or composite indexes: all searching happens in memory (ADR-0007).
+- Firestore is the **durable store only**. Allowed operations: create one movie (atomic, via the deterministic id), read all movies. Get by id reads from `MovieCatalog`, not from Firestore. Do not add filtered Firestore queries or composite indexes: all searching happens in memory (ADR-0007).
 - `MovieCatalog` holds an immutable in-memory snapshot of all movies. It loads on startup, is replaced after each successful create, and reloads when older than `app.catalog.refresh-interval` (default 60 minutes).
 - Cost and scale: every load reads every movie document, and the free tier allows 50,000 reads per day. Keep the catalog under about 1,000 movies; beyond that, change the storage/search approach (ADR-0007).
 - Keep `--max-instances 1` on Cloud Run: every instance has its own catalog, so more instances could show different data until their next refresh.

@@ -23,7 +23,7 @@ validation rules, error cases, tests. Then ask the `architect` agent to review i
 Apply "Required changes", show the user the plan and wait for approval.
 
 ## 4. Tests first
-Ask the `unit-test-writer` agent to write unit tests from the contract (service, controller, repository as relevant).
+Ask the `unit-test-writer` agent to write unit tests from the contract (search, catalog, service, controller and pure helpers as relevant; never the Firestore adapter, which has no automated tests by design).
 Expect them to fail at this point, which proves they test something.
 
 ## 5. Implement, bottom-up

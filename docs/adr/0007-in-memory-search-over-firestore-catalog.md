@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-13
-- **Updated:** 2026-10-13 (`year` became `minYear` / `maxYear`; searches use one field at a time, not combinations)
+- **Updated:** 2026-10-13 (`year` became `minYear` / `maxYear`; searches use one field at a time, not combinations; get by id reads from the catalog)
 - **Supersedes:** ADR-0005. **Amends:** ADR-0002 (pagination and filters), ADR-0003 (how Firestore is used), ADR-0006 (stored fields).
 
 ## Context
@@ -25,7 +25,8 @@ Single-field searches would be easy for some fields in Firestore: ranges on year
 5. **Relational database with SQL/full-text search (Cloud SQL, or an external free-tier Postgres):** the right choice for a large catalog. Cloud SQL is not free and an external database adds a second vendor. This is the documented upgrade path.
 
 ## Decision
-- Firestore remains the durable store. Allowed operations are: create one movie, read one by id, read all movies. No filtered Firestore queries, no composite indexes, no derived fields.
+- Firestore remains the durable store. Allowed operations are: create one movie, read all movies. No filtered Firestore queries, no composite indexes, no derived fields.
+- `GET /movies/{id}` also reads from the catalog snapshot, not from Firestore. Lookups then cost no reads and behave the same as search: a movie is either visible to both or to neither.
 - `MovieCatalog` keeps an immutable in-memory snapshot of all movies. It loads at startup, is replaced after every successful create, and reloads when older than `app.catalog.refresh-interval` (default 60 minutes).
 - `MovieSearch` (plain Java in the service layer) applies the search, sorts by name then id, and paginates.
 - **One search field per request.** Sending two or more different search fields is a `400` that names them; they are never combined or silently ignored. `minYear` + `maxYear` count together as one field (year) and `minRating` + `maxRating` count together as one field (rating). `page` and `size` are not search fields. No search field means list everything.
@@ -45,7 +46,7 @@ Single-field searches would be easy for some fields in Firestore: ranges on year
 ## Consequences
 - Every catalog load reads every movie document (one read each). With a 50,000 reads/day free quota, the catalog should stay under about 1,000 movies; with the default refresh interval that is roughly 30,000 reads a day in the worst case (24 refreshes plus a few cold starts).
 - Cold starts load the whole catalog, which is fast for a small catalog.
-- A second instance (or a manual edit in the Firestore console) can show stale data for up to one refresh interval.
+- A second instance (or a manual edit in the Firestore console) can show stale data for up to one refresh interval. This applies to get by id as well as search.
 - Search is a linear scan, which is instant for hundreds or thousands of movies and unsuitable for millions.
 - Relevance ranking, typo tolerance and accent folding are not provided.
 - Rejecting combined searches keeps the contract and tests small. Allowing combinations later is backward compatible (loosen the validation and AND the predicates).
