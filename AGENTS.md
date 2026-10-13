@@ -6,19 +6,21 @@ Base package: `com.pehmo.movieapi` (Java package names cannot contain hyphens; t
 
 ## Tech stack
 - Java 21, Spring Boot 3.x (Spring MVC), **Gradle** (Kotlin DSL). Always use the wrapper `./gradlew`, never a global `gradle`.
-  Dependency and plugin versions are declared directly in `build.gradle.kts` (no version catalog); Spring Boot's dependency management supplies versions for the Spring libraries.
+  Run Gradle with a Java 21 JDK as `JAVA_HOME` (or list it in `org.gradle.java.installations.paths` in your user `~/.gradle/gradle.properties`); the build uses a Java 21 toolchain.
+  Dependency and plugin versions are declared directly in `build.gradle.kts` (no version catalog); the Spring Boot BOM, imported as a Gradle `platform(...)`, supplies versions for the Spring libraries
+  (not the `io.spring.dependency-management` plugin, which also overrides the quality tools' own classpaths, ADR-0008).
 - Bean Validation, springdoc-openapi (Swagger UI)
 - **Persistence: Cloud Firestore** (Native mode, `(default)` database, free tier) as a durable store only, accessed with the official
   `com.google.cloud:google-cloud-firestore` Java client (Spring Data Firestore is reactive-only and not used, ADR-0003).
   **Search runs in memory** over a cached copy of the catalog (ADR-0007).
 - Tests: JUnit 5, Mockito, AssertJ, `@WebMvcTest` (unit tests only, see Testing conventions)
-- Quality gates: Spotless (google-java-format), Checkstyle, SpotBugs, JaCoCo
+- Quality gates: compiler warnings as errors, Spotless (google-java-format), Checkstyle, SpotBugs, JaCoCo (ADR-0008)
 - Deployment: Google Cloud Run, project `movie-api-511411`, container built from `Dockerfile`
 
 ## Commands
 | Task | Command |
 |---|---|
-| Full quality gate (format check, lint, unit tests, coverage) | `./gradlew check` |
+| Full quality gate (compile with `-Werror`, format check, lint, bug detection, unit tests, coverage) | `./gradlew check` |
 | Unit tests only (fast) | `./gradlew test` |
 | Auto-format code | `./gradlew spotlessApply` |
 | Coverage report | `./gradlew jacocoTestReport` (output in `build/reports/jacoco`) |
@@ -34,6 +36,8 @@ Search logic lives in the service layer as plain Java, so it is fully unit-testa
 
 ```
 build.gradle.kts, settings.gradle.kts, gradle.properties   build and deployment settings
+gradlew, gradlew.bat, gradle/wrapper/                      Gradle wrapper (pinned version and checksum)
+config/checkstyle/                                         Checkstyle rules and test suppressions (layout is left to google-java-format)
 Dockerfile, .dockerignore, .gcloudignore                   container build for Cloud Run
 src/main/java/com/pehmo/movieapi/
   MovieApiApplication.java
@@ -143,8 +147,10 @@ Rules:
 - Build test data with a builder/factory (`MovieTestData.aMovie().withName(...)`), not copy-pasted literals.
 - Unit tests only: service with Mockito (mock `MovieRepository`); controller with `@WebMvcTest`; `MovieSearch` (the core: each search field, paging, ordering), `MovieSearchCriteria` (the one-field rule and validation), normalization, id generation, document mapping, `MovieCatalog` (refresh logic with a mocked repository and a fixed `Clock`) and `MovieSeedLoader` (mocked `MovieService`) directly.
 - Keep `FirestoreMovieRepository` and `FirestoreConfig` thin (query building and mapping only): they have no automated tests and are excluded from the JaCoCo rule.
+  `MovieApiApplication` is excluded too: it only bootstraps Spring, so keep it free of logic (ADR-0008).
 - API tests: the Postman collection in `postman/` (add a movie, list all movies, search with one search field at a time) is written by the `postman-test-writer` agent and run by hand against the deployed service. It is not part of `./gradlew check`. Each run adds one test movie (name starts with `0 Pmtest`) to the real database, and there is no delete endpoint, so leftovers are removed by hand in the Firestore console.
 - JaCoCo minimum: 80% line coverage on the remaining `main` code. Meaningful assertions matter more than the number.
+  `check` fails if main code falls under the rule but no test ran (JaCoCo alone would silently skip the rule, ADR-0008).
 
 ## Deployment (Google Cloud Run)
 - One-line deploy: `./gradlew deployCloudRun`. It runs `check`, then `gcloud run deploy --source .`; Cloud Build builds the `Dockerfile`.

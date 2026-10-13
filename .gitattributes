@@ -1,0 +1,4 @@
+# LF everywhere: the container build runs on Linux and Spotless checks against these endings.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.jar binary

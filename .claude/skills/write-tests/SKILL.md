@@ -35,6 +35,7 @@ For search tests also provide a small shared catalog (5-8 movies modeled on the 
 | Seed loader | plain JUnit + Mockito (mock `MovieService`) | Reads the JSON, calls `createMovie` per entry, skips invalid or duplicate entries without failing, does nothing when the catalog is not empty |
 
 The Firestore adapter (`FirestoreMovieRepository`) and `FirestoreConfig` have no automated tests by design (ADR-0003).
+`MovieApiApplication` has none either: it only bootstraps Spring, and a test for it would need a full Spring context (ADR-0008).
 Keep them thin so there is little to get wrong, and move any real logic into the pure classes above where it can be tested.
 
 ## Required cases per use case
@@ -52,4 +53,4 @@ Keep them thin so there is little to get wrong, and move any real logic into the
 - When a test fails because the production code is wrong, do not weaken the test. Report the defect.
 
 ## Running
-`./gradlew test` while iterating; `./gradlew check` for everything plus the JaCoCo gate (80% line coverage on `main` code, excluding the thin Firestore classes listed above).
+`./gradlew test` while iterating; `./gradlew check` for everything plus the JaCoCo gate (80% line coverage on `main` code, excluding the thin Firestore classes and `MovieApiApplication` listed above, ADR-0008).

@@ -12,5 +12,6 @@ Add a new ADR instead of rewriting history; mark old ones as superseded.
 | [0005](0005-name-prefix-search-and-composite-indexes.md) | Name prefix search and composite indexes | Superseded by 0007 |
 | [0006](0006-movie-data-model-and-seed-data.md) | Movie data model and seed data | Accepted |
 | [0007](0007-in-memory-search-over-firestore-catalog.md) | In-memory search over a Firestore-backed catalog | Accepted |
+| [0008](0008-quality-gates-and-build-verification.md) | Quality gates and build verification | Accepted |
 
 Template: `.claude/skills/document-change/templates/adr-template.md`

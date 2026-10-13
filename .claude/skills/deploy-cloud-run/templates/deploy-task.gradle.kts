@@ -4,13 +4,7 @@
 // Settings come from gradle.properties. Prerequisite: one-time gcloud setup (see docs/deployment.md).
 // ---------------------------------------------------------------------------
 
-// Fixed jar name so the Dockerfile can copy it without guessing the version.
-tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
-    archiveFileName.set("app.jar")
-}
-tasks.named<Jar>("jar") {
-    enabled = false // skip the "-plain" jar, it is not needed for the container
-}
+// The fixed jar name (app.jar) that the Dockerfile copies is already set in build.gradle.kts (slice 01).
 
 val gcpProjectId = providers.gradleProperty("gcpProjectId").get()
 val gcpRegion = providers.gradleProperty("gcpRegion").get()
