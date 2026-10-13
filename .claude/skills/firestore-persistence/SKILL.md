@@ -29,15 +29,17 @@ Build one `Firestore` bean from `FirestoreOptions.getDefaultInstance()`. On Clou
 Do not add key files or project-specific settings. Keep this class trivial.
 
 ## Catalog (`MovieCatalog`, in the service package)
-- Holds an immutable snapshot (list of movies plus the load time) in an `AtomicReference`.
-- Loads via `MovieRepository.findAll()` at startup. If the first load fails, let startup fail loudly (usually a permission or database-creation problem).
-- After a successful create, publish a new snapshot that includes the movie (keep the original load time).
-- Reloads when the snapshot is older than `app.catalog.refresh-interval` (default 60 minutes), using an injected `Clock`. Only one thread reloads at a time. If a refresh fails, keep serving the old snapshot, log a warning and retry at most once a minute.
-- `isEmpty()` serves the seed loader; `MovieCatalog.findById(id)` looks the movie up in the snapshot (it triggers the same refresh check as search).
+Policy and cost reasoning: ADR-0013.
+- Holds an immutable snapshot (movies keyed by id) in an `AtomicReference`; the next reload time (`nextLoadAttemptAt`) is kept separately.
+- Loads via `MovieRepository.findAll()` in its constructor. If the first load fails, startup fails loudly (usually a permission or database-creation problem). The refresh interval must be positive.
+- After a successful create, `MovieService` calls `include(movie)`, which publishes a new snapshot with the movie, replacing any entry with the same id, and does not move the next reload. (Named `include`, not `add`: SpotBugs treats `add*`/`load*`/`set*`/`put*` as mutators and flags the injected collaborators with EI_EXPOSE_REP2.)
+- Reloads lazily, on the request thread, when the injected `Clock` reaches `nextLoadAttemptAt` = start of the last attempt + `app.catalog.refresh-interval` (default 60 minutes). No scheduler: an idle instance costs no reads. Only one reload runs at a time (non-reentrant `AtomicBoolean`, re-checked after taking it); other requests serve the current copy. Movies included during a reload are merged into the fresh snapshot.
+- If a refresh fails, keep serving the old snapshot, log a warning and retry only after a **full interval**: a failed load can be billed for every document it read.
+- `movies()` and `isEmpty()` run the refresh check. Get by id (a later slice) will look the movie up in the same snapshot.
 
 ## Seed data
 `MovieSeedLoader` (in `movie/service`, an `ApplicationRunner`) reads `src/main/resources/seed/movies.json` (the 20 movies from the provided `movies-compact.json`) when `app.seed.enabled=true` and the catalog is empty.
-Each entry goes through `MovieService.createMovie`, which trims, validates, detects duplicates and updates the catalog. Invalid or duplicate entries are logged and skipped, never fatal.
+Each entry goes through `MovieService.createMovie`, which trims, validates, detects duplicates and updates the catalog. Entries are converted one at a time with an `ObjectReader` from the strict application mapper (ADR-0012). Unconvertible, invalid or duplicate entries are logged at WARN with their index and skipped, never fatal. A `MovieStorageException` stops seeding (logged, startup continues; waiting for every entry could exceed Cloud Run's startup limit). An unreadable or non-array seed file fails startup. A partly seeded catalog is not resumed on the next startup (it is no longer empty).
 The file has suspected mistakes (stray spaces, typos, wrong years): report them to the user, do not correct them silently.
 
 ## Testing
@@ -48,6 +50,6 @@ There is no emulator or integration-test suite (ADR-0003). Therefore:
 
 ## Cost awareness (free tier)
 The project's free database includes 50,000 reads, 20,000 writes and 20,000 deletes per day and 1 GiB storage.
-Every catalog load reads every movie once, so cost = (number of loads per day) x (number of movies). Loads happen on cold start, after the refresh interval, and never per request.
-Keep the catalog under about 1,000 movies and keep Cloud Run at `--max-instances 1`. Seeding 20 movies costs 20 writes, once.
+Every catalog load reads every movie once, so reads/day = (cold starts + refreshes during an instance's life + failed attempts) x max(movies, 1). Loads never happen per request.
+With `min-instances 0`, sparse traffic can cause 50-100 cold starts a day, so plan for about 100 loads a day: keep the catalog under about 500 movies (ADR-0013) and keep Cloud Run at `--max-instances 1`. Seeding 20 movies costs 20 writes, once.
 Check current numbers on the Firestore pricing page, since quotas can change.

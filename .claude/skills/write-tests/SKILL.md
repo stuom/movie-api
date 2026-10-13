@@ -27,12 +27,12 @@ For search tests also provide a small shared catalog (5-8 movies modeled on the 
 | Part | Approach | Notes |
 |---|---|---|
 | `MovieSearch`, `MovieSearchCriteria` | plain JUnit, no mocks | The core. Full matrix, including the one-field rule, in the `movie-search` skill |
-| `MovieCatalog` | plain JUnit + Mockito (`MovieRepository`) + fixed `Clock` | Initial load, replaced after create, no reload before the interval, reload after it, failed refresh keeps the old snapshot |
+| `MovieCatalog` | plain JUnit + Mockito (`MovieRepository`) + controllable test clock (`MutableClock`) | Initial load, `include` after create (no duplicate id, next reload unchanged), no reload before the interval, reload exactly at it, failed refresh keeps the old snapshot and waits a full interval, merge of movies included during a reload |
 | `MovieService` | Mockito (`MovieRepository`, `MovieCatalog` or real catalog with a stub repository) | Create: an invalid movie -> `InvalidMovieException` from `MovieRules` (rules themselves are tested in `MovieRulesTest`), duplicate -> `DuplicateMovieException`, catalog updated; get by id; search delegates correctly |
 | Controller | `@WebMvcTest(MovieController.class)` + `MockMvc`, mocked service | Parameter binding for every filter, defaults, `Location` header, validation errors, response shape (`items`, `page`, `size`, `totalItems`, `totalPages`) |
 | Error handling | `@WebMvcTest` with the `@RestControllerAdvice` | Assert the `ProblemDetail` body (status, title, detail), not only the status code |
 | Pure helpers | plain JUnit | Normalization and trimming, deterministic id generation (golden values computed outside the code), `MovieRules` (every boundary with a fixed `Clock`), `MovieDocument` mapping (embedded people and genre lists) |
-| Seed loader | plain JUnit + Mockito (mock `MovieService`) | Reads the JSON, calls `createMovie` per entry, skips invalid or duplicate entries without failing, does nothing when the catalog is not empty |
+| Seed loader | `@JsonTest` + `@Import(JacksonConfig.class)` for the production mapper, Mockito (mock `MovieService`, `MovieCatalog`) | Reads the JSON, calls `createMovie` per entry, skips unconvertible, invalid or duplicate entries without failing, stops on a storage failure, fails on a non-array file, does nothing when the catalog is not empty |
 
 The Firestore adapter (`FirestoreMovieRepository`) and `FirestoreConfig` have no automated tests by design (ADR-0003).
 `MovieApiApplication` has none either: it only bootstraps Spring, and a test for it would need a full Spring context (ADR-0008).
@@ -48,7 +48,7 @@ Keep them thin so there is little to get wrong, and move any real logic into the
 - Deterministic: no `Thread.sleep`, no random data without a fixed seed, no wall-clock time (inject a `Clock`).
 - Independent: each test creates what it needs.
 - Meaningful: if you can delete a line of production code and the test still passes, the test is not checking enough.
-- Fast: no Spring context except the `@WebMvcTest` slices.
+- Fast: no Spring context except the `@WebMvcTest` slices and the `@JsonTest` slice of the seed loader test.
 - Do not test getters, records or framework behavior.
 - When a test fails because the production code is wrong, do not weaken the test. Report the defect.
 

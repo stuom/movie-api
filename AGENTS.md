@@ -95,7 +95,7 @@ Rules:
 ## Sample data
 - `movies-compact.json` (20 movies, provided by the user) defines the data shape. It is an array of objects with the same shape as the `POST` body. Keep a copy at `src/main/resources/seed/movies.json`.
 - `MovieSeedLoader` runs on startup when `app.seed.enabled=true` and the loaded `MovieCatalog` is empty. Deleting every movie therefore brings the sample data back on the next startup; set `app.seed.enabled=false` if that is unwanted.
-  It passes each entry through `MovieService.createMovie`, so seed data gets the same validation, trimming and duplicate check as API input. Invalid or duplicate entries are logged and skipped.
+  It passes each entry through `MovieService.createMovie`, so seed data gets the same validation, trimming and duplicate check as API input. Invalid or duplicate entries are logged and skipped; a storage failure stops seeding (logged, startup continues).
 - The file contains likely mistakes (typos, wrong release years). Do not silently correct them: list the suspected errors for the user and let them decide.
 
 ## API conventions
@@ -135,7 +135,7 @@ Rules:
 ## Persistence and catalog rules (details in the `firestore-persistence` and `movie-search` skills)
 - Firestore is the **durable store only**. Allowed operations: create one movie (atomic, via the deterministic id), read all movies. Get by id reads from `MovieCatalog`, not from Firestore. Do not add filtered Firestore queries or composite indexes: all searching happens in memory (ADR-0007).
 - `MovieCatalog` holds an immutable in-memory snapshot of all movies. It loads on startup, is replaced after each successful create, and reloads when older than `app.catalog.refresh-interval` (default 60 minutes).
-- Cost and scale: every load reads every movie document, and the free tier allows 50,000 reads per day. Keep the catalog under about 1,000 movies; beyond that, change the storage/search approach (ADR-0007).
+- Cost and scale: every load reads every movie document, and the free tier allows 50,000 reads per day. Keep the catalog under about 500 movies (cold starts count as loads, ADR-0013); beyond that, change the storage/search approach (ADR-0007).
 - Keep `--max-instances 1` on Cloud Run: every instance has its own catalog, so more instances could show different data until their next refresh.
 - `actors` and `director` are embedded in the movie document (ADR-0006).
 - Use the `(default)` database only: the free tier does not apply to named databases.
@@ -174,7 +174,7 @@ Rules:
 - `README.md`: what it is, prerequisites (Java 21), how to run the unit tests and the Postman collection, link to the deployed Swagger UI, link to the deployment doc.
 - `docs/api.md`: human-readable contract with request/response examples (curl).
 - `docs/firestore-model.md`: collection layout and document fields. `docs/api.md` also documents the search semantics.
-- `docs/adr/NNNN-title.md`: one short ADR per significant decision. ADR-0001 to ADR-0012 exist (index in `docs/adr/README.md`); update or supersede them instead of duplicating.
+- `docs/adr/NNNN-title.md`: one short ADR per significant decision. ADR-0001 to ADR-0013 exist (index in `docs/adr/README.md`); update or supersede them instead of duplicating.
 - `docs/ai-log/NN-slice-name.md`: record of each AI-assisted slice: key prompts, plan, what was changed or rejected.
 
 ## How to work (agents and humans)

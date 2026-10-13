@@ -25,7 +25,7 @@ Every public class and method. Explain intent, rules, thrown exceptions, and why
 Write an ADR when the decision is hard to reverse or someone might ask "why did you do it this way?":
 framework or library choices, database strategy, API shape, error format, deployment approach.
 Copy `templates/adr-template.md` to `docs/adr/NNNN-short-title.md` (next free number), keep it to one page, and set a status.
-ADR-0001 to ADR-0012 already exist (index in `docs/adr/README.md`) in `docs/adr/`: keep them accurate, and supersede rather than silently rewrite them when a decision changes. Also keep `docs/firestore-model.md` and the search semantics in `docs/api.md` in sync with the code.
+ADR-0001 to ADR-0013 already exist (index in `docs/adr/README.md`) in `docs/adr/`: keep them accurate, and supersede rather than silently rewrite them when a decision changes. Also keep `docs/firestore-model.md` and the search semantics in `docs/api.md` in sync with the code.
 
 ## 5. AI log (`docs/ai-log/NN-slice-name.md`)
 Copy `templates/ai-log-entry.md`. Record: the goal, the key prompts (verbatim, shortened if very long), the plan the agent proposed,

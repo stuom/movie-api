@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-13
+- **Updated:** 2026-10-14 (slice 06: the seed loader uses an `ObjectReader` derived from the mapper)
 
 ## Context
 `POST /api/v1/movies` is public, unauthenticated and served by a single Cloud Run instance (ADR-0007). By default Jackson is lenient, which hides client mistakes:
@@ -34,7 +35,7 @@ Every such error becomes a `400` problem detail. A body over the limit becomes `
 ## Consequences
 - Client mistakes get a `400` that names the field instead of being converted or dropped. Sending `id` is rejected as an unknown field.
 - These settings configure the application's one `ObjectMapper`, so they apply to **everything that injects it**, not only request bodies:
-  - The planned `MovieSeedLoader` must read the seed file as a `JsonNode` array and convert one entry at a time. Then one bad entry is logged and skipped (the AGENTS.md seed rule) instead of failing startup.
-  - The 256 KB limit applies to the seed file as well. That is fine for the 20 sample movies. If the seed grows past the limit, the loader needs its own copy of the mapper (`ObjectMapper.copy()`) with a larger limit.
+  - `MovieSeedLoader` reads the seed file as a `JsonNode` array and converts one entry at a time, with an `ObjectReader` derived from this mapper (`readerFor(NewMovie.class)`, which keeps all its settings). One bad entry is then logged and skipped (the AGENTS.md seed rule) instead of failing startup.
+  - The 256 KB limit applies to the seed file as well. That is fine for the 20 sample movies (about 9 KB), but would need attention near the ceiling of about 500 movies (ADR-0013). If the seed grows past the limit, the loader needs its own copy of the mapper (`ObjectMapper.copy()`) with a larger limit.
 - `@WebMvcTest` leaves out user `@Configuration` classes, so controller tests must `@Import(JacksonConfig.class)` or they test a more lenient mapper than production uses.
 - Strictness depends on Jackson settings that are easy to misread, so it is pinned by controller tests: `"1986"`, `1986.0`, `123`, `1.5` and `true` in the wrong place, unknown fields, repeated keys, trailing content, int overflow and an oversized body.

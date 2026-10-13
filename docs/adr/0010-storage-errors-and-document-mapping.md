@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-13
+- **Updated:** 2026-10-14 (slice 06: catalog gap after a timed-out create; cost of a corrupt document)
 
 ## Context
 The Firestore adapter (`FirestoreMovieRepository`) has no automated tests and no emulator (ADR-0003). It must still give the rest of the application clear outcomes: a duplicate must become `409 Conflict` and never a `500` (ADR-0006), and no Firestore, gax or gRPC type may leave the `persistence` package. Firestore calls return futures that can wait forever, and the documents read back are not checked by `MovieRules` (ADR-0009), so a corrupt document could turn into a wrong movie without anyone noticing. Decisions marked *[architect]* came from the architect review of the slice plan.
@@ -22,4 +23,5 @@ The Firestore adapter (`FirestoreMovieRepository`) has no automated tests and no
 - The service and the web layer handle two meaningful exceptions and never see storage types; a different store only has to throw the same two.
 - A request or startup never hangs on Firestore for more than about 20 seconds per call, at the price that a client may get a storage error (planned as `500`) for a movie that was in fact stored.
 - Adding a movie field means updating `MovieDocument` (both directions) and its tests by hand.
-- A single bad document, for example one edited by hand in the Firestore console, makes the catalog load fail until it is fixed in the console. The error message names the document id and field to fix.
+- A single bad document, for example one edited by hand in the Firestore console, makes the catalog load fail until it is fixed in the console. The error message names the document id and field to fix. Each failed load attempt can still be billed for all N documents it read, so `MovieCatalog` waits a full refresh interval before trying again and keeps serving the previous copy (ADR-0013).
+- A timed-out create that was in fact stored is not added to the in-memory catalog (the catalog is updated only after a confirmed write). The client's retry gets `409` with the `movieId`, but the movie appears in search, and in the planned `GET /api/v1/movies/{id}`, only after the next catalog reload, so a lookup by that id can answer `404` for up to one refresh interval.

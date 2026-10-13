@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-13
-- **Updated:** 2026-10-13 (`year` became `minYear` / `maxYear`; searches use one field at a time, not combinations; get by id reads from the catalog)
+- **Updated:** 2026-10-13 (`year` became `minYear` / `maxYear`; searches use one field at a time, not combinations; get by id reads from the catalog); 2026-10-14 (read budget and ceiling of about 500 movies, see ADR-0013)
 - **Supersedes:** ADR-0005. **Amends:** ADR-0002 (pagination and filters), ADR-0003 (how Firestore is used), ADR-0006 (stored fields).
 
 ## Context
@@ -44,7 +44,7 @@ Single-field searches would be easy for some fields in Firestore: ranges on year
 - Cloud Run stays at `--max-instances 1` so there is a single catalog.
 
 ## Consequences
-- Every catalog load reads every movie document (one read each). With a 50,000 reads/day free quota, the catalog should stay under about 1,000 movies; with the default refresh interval that is roughly 30,000 reads a day in the worst case (24 refreshes plus a few cold starts).
+- Every catalog load reads every movie document (one read each). With a 50,000 reads/day free quota and cold starts counted (up to about 100 loads a day), the catalog should stay under about 500 movies. The refresh policy and the cost formula are in ADR-0013.
 - Cold starts load the whole catalog, which is fast for a small catalog.
 - A second instance (or a manual edit in the Firestore console) can show stale data for up to one refresh interval. This applies to get by id as well as search.
 - Search is a linear scan, which is instant for hundreds or thousands of movies and unsuitable for millions.

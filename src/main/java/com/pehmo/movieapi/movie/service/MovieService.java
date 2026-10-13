@@ -6,8 +6,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * The movie use cases. API requests and (later) the seed loader both come through here, so every
- * movie gets the same trimming, validation and duplicate check.
+ * The movie use cases. API requests and the seed loader both come through here, so every movie gets
+ * the same trimming, validation and duplicate check, and every stored movie reaches the in-memory
+ * catalog.
  */
 @Service
 public class MovieService {
@@ -16,11 +17,13 @@ public class MovieService {
 
   private final MovieRepository repository;
   private final MovieRules rules;
+  private final MovieCatalog catalog;
 
-  /** Creates the service on the movie store and the movie rules. */
-  public MovieService(MovieRepository repository, MovieRules rules) {
+  /** Creates the service on the movie store, the movie rules and the in-memory catalog. */
+  public MovieService(MovieRepository repository, MovieRules rules, MovieCatalog catalog) {
     this.repository = repository;
     this.rules = rules;
+    this.catalog = catalog;
   }
 
   /**
@@ -30,6 +33,10 @@ public class MovieService {
    * makes the store reject a duplicate atomically (ADR-0006), while a check beforehand could race
    * with a concurrent create and adds nothing.
    *
+   * <p>The catalog is updated only after the store confirms the write. When the outcome is unknown
+   * ({@link MovieStorageException}), the movie appears with the next catalog reload, if it was
+   * stored.
+   *
    * @throws InvalidMovieException if the movie breaks a rule; nothing is stored
    * @throws DuplicateMovieException if a movie with the same normalized name and year exists
    * @throws MovieStorageException if the store fails or does not answer in time; the movie may
@@ -38,6 +45,7 @@ public class MovieService {
   public Movie createMovie(NewMovie newMovie) {
     Movie movie = rules.toValidMovie(newMovie);
     repository.create(movie);
+    catalog.include(movie);
     // Only the hex id and the year: the name is client text and could forge log lines.
     LOG.info("Added movie {} ({})", movie.id(), movie.year());
     return movie;

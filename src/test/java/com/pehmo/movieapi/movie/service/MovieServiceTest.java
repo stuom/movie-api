@@ -27,12 +27,13 @@ class MovieServiceTest {
       Clock.fixed(Instant.parse("2026-06-15T00:00:00Z"), ZoneOffset.UTC);
 
   @Mock private MovieRepository repository;
+  @Mock private MovieCatalog catalog;
 
   private MovieService service;
 
   @BeforeEach
   void createService() {
-    service = new MovieService(repository, new MovieRules(FIXED_CLOCK));
+    service = new MovieService(repository, new MovieRules(FIXED_CLOCK), catalog);
   }
 
   @Test
@@ -61,6 +62,18 @@ class MovieServiceTest {
     assertThat(created.director()).isEqualTo(new Person("James", "Cameron"));
     assertThat(created.actors()).isEmpty();
     assertThat(created.synopsis()).isNull();
+  }
+
+  @Test
+  void shouldAddCreatedMovieToCatalogWhenCreateSucceeds() {
+    // given
+    NewMovie newMovie = aNewMovie().build();
+
+    // when
+    Movie created = service.createMovie(newMovie);
+
+    // then
+    verify(catalog).include(created);
   }
 
   @Test
@@ -99,5 +112,48 @@ class MovieServiceTest {
 
     // when / then
     assertThatThrownBy(() -> service.createMovie(aNewMovie().build())).isSameAs(failure);
+  }
+
+  @Test
+  void shouldNotTouchCatalogWhenMovieBreaksRules() {
+    // given
+    NewMovie newMovie = aNewMovie().withName(" ").build();
+
+    // when
+    assertThatThrownBy(() -> service.createMovie(newMovie))
+        .isInstanceOf(InvalidMovieException.class);
+
+    // then
+    verifyNoInteractions(catalog);
+  }
+
+  @Test
+  void shouldNotTouchCatalogWhenRepositoryReportsDuplicate() {
+    // given
+    willThrow(new DuplicateMovieException(MovieTestData.aMovie().buildMovie()))
+        .given(repository)
+        .create(any(Movie.class));
+
+    // when
+    assertThatThrownBy(() -> service.createMovie(aNewMovie().build()))
+        .isInstanceOf(DuplicateMovieException.class);
+
+    // then
+    verifyNoInteractions(catalog);
+  }
+
+  @Test
+  void shouldNotTouchCatalogWhenRepositoryFails() {
+    // given
+    willThrow(new MovieStorageException("store down", new IllegalStateException("boom")))
+        .given(repository)
+        .create(any(Movie.class));
+
+    // when
+    assertThatThrownBy(() -> service.createMovie(aNewMovie().build()))
+        .isInstanceOf(MovieStorageException.class);
+
+    // then
+    verifyNoInteractions(catalog);
   }
 }
