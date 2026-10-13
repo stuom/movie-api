@@ -21,7 +21,7 @@ Constraints:
 ## Decision
 `MovieCatalog` (service package, `app.catalog.refresh-interval`, default `60m`):
 - **Initial load** in the constructor. If it fails, startup fails (usually a missing database or permission that no retry fixes). The interval must be positive; zero would reload on every request.
-- **Lazy reload on access:** `movies()` and `isEmpty()` reload first when the clock has reached `nextLoadAttemptAt`. No scheduler.
+- **Lazy reload on access:** `movies()` and `findById()` reload first when the clock has reached `nextLoadAttemptAt`. No scheduler.
 - **One reload at a time:** a non-reentrant `AtomicBoolean` guard, checked again after taking it, so a request that arrives while another reloads (or just finished) serves the current copy instead of starting a second full read.
 - **Timing:** `nextLoadAttemptAt` = start of the attempt + interval, set on **every** attempt, successful or not.
 - **Failure:** on `MovieStorageException` the old snapshot keeps being served, a warning is logged, and the next attempt waits a **full interval**.

@@ -14,14 +14,17 @@ Because search is plain Java it can be tested exhaustively with fast unit tests,
 - `minYear` + `maxYear` together are **one** field (year); `minRating` + `maxRating` together are **one** field (rating).
 - `page` and `size` are not search fields.
 - Blank text parameters are treated as not provided, so they do not count.
-- Zero fields = list everything. More than one field = `400` (`InvalidSearchCriteriaException`) whose detail names the fields received, for example "Use only one search field at a time; received: actor, director". Never silently ignore extra fields.
+- Zero fields = list everything. More than one field = `400` (`InvalidQueryException`, the one 400 for every query problem, carrying `FieldViolation`s) whose detail names the fields received, for example "Use only one search field at a time; received: actor, director". Never silently ignore extra fields.
+- Unknown query parameters are rejected (`is not a known parameter`, ADR-0002); each new search parameter is added to `MovieQuery`'s known set.
 
 ## Classes
+- `MovieQuery.parse(Map<String, List<String>>)` is the entry point: it reads the raw parameters, holds a `MoviePageRequest paging`
+  and (from the search slices) a `MovieSearchCriteria criteria`, and reports every violation at once in one `InvalidQueryException`.
 - `MovieSearchCriteria`: a **sealed interface** with one record per field plus `All`, for example `NameContains(text)`, `YearRange(min, max)`, `Genre(text)`, `ViewerAge(age)`, `RatingRange(min, max)`, `DirectorNamed(words)`, `ActorNamed(words)`, `SynopsisContains(words)`.
-  A static factory `MovieSearchCriteria.of(...)` takes all the raw request values, normalizes text, enforces the one-field rule and validates ranges. The sealed type means `MovieSearch` uses an exhaustive `switch` (Java 21 pattern matching), so adding a filter fails to compile until it is handled.
-- `MovieSearch`: `search(List<Movie>, MovieSearchCriteria, int page, int size)` returns a `MoviePage`. One small, named, testable method per filter.
-- `MovieService.searchMovies(criteria, page, size)` takes the snapshot from `MovieCatalog` and calls `MovieSearch`.
-- The controller maps request parameters to `MovieSearchCriteria.of(...)` and the `MoviePage` to `MoviePageResponse`. No matching logic in the controller.
+  A static factory `MovieSearchCriteria.of(...)`, called from `MovieQuery.parse`, takes the raw search values, normalizes text, enforces the one-field rule and validates ranges. The sealed type means `MovieSearch` uses an exhaustive `switch` (Java 21 pattern matching), so adding a filter fails to compile until it is handled.
+- `MovieSearch`: `search(List<Movie>, MovieSearchCriteria, MoviePageRequest)` returns a `MoviePage` (today `pageOf(movies, paging)`, renamed when matching is added). One small, named, testable method per filter.
+- `MovieService.searchMovies(MovieQuery)` (today `listMovies(query)`; rename it, do not add an overload) takes the snapshot from `MovieCatalog` and calls `MovieSearch`.
+- The controller passes the raw `MultiValueMap` to `MovieQuery.parse` and maps the `MoviePage` to `MoviePageResponse`. No matching logic in the controller.
 
 ## Semantics (the contract; keep AGENTS.md, ADR-0007 and `docs/api.md` identical to this)
 | Field / parameters | Rule |
@@ -47,7 +50,7 @@ Because search is plain Java it can be tested exhaustively with fast unit tests,
 3. Write the tests below before the implementation (see the `write-tests` skill).
 4. Do not touch Firestore: no new queries, indexes or stored fields are needed.
 
-## Unit-test matrix (`MovieSearchTest` and `MovieSearchCriteriaTest`)
+## Unit-test matrix (`MovieSearchTest`, `MovieSearchCriteriaTest` and `MovieQueryTest`)
 Use a small fixed list of movies built with `MovieTestData`, ideally a handful taken from the real sample data.
 - Each field on its own: matching, non-matching, case-insensitive, extra spaces.
 - `name`: substring in the middle and at the end, not only prefix.
@@ -57,4 +60,5 @@ Use a small fixed list of movies built with `MovieTestData`, ideally a handful t
 - `director` and `actor`: first name only, last name only, both words, words in either order, multi-word last name ("lee jones", "del toro"), words matching different actors must not match, movie without director/actors does not match.
 - `synopsis`: single word, several words in any order, a word missing -> no match, movie without synopsis.
 - **One-field rule** (`MovieSearchCriteriaTest`): no fields -> `All`; each field alone builds the right criteria; the two year bounds count as one field and the two rating bounds count as one field; any two different fields (for example `actor` + `director`, `minYear` + `minRating`) are rejected, and the error names the fields received; blank text plus one real field is accepted.
-- Paging and order: ordering by name then id, `page`/`size` slicing, page beyond the end, `totalItems`/`totalPages`, size 100 accepted and 101 rejected, negative page rejected.
+- Paging and order (`MovieSearchTest`): ordering by name then id, `page`/`size` slicing, page beyond the end, `totalItems`/`totalPages`.
+- Paging validation (`MovieQueryTest`): size 100 accepted and 101 rejected, negative page rejected, non-whole numbers, repeated and unknown parameters.

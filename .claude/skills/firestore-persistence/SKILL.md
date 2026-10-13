@@ -35,7 +35,7 @@ Policy and cost reasoning: ADR-0013.
 - After a successful create, `MovieService` calls `include(movie)`, which publishes a new snapshot with the movie, replacing any entry with the same id, and does not move the next reload. (Named `include`, not `add`: SpotBugs treats `add*`/`load*`/`set*`/`put*` as mutators and flags the injected collaborators with EI_EXPOSE_REP2.)
 - Reloads lazily, on the request thread, when the injected `Clock` reaches `nextLoadAttemptAt` = start of the last attempt + `app.catalog.refresh-interval` (default 60 minutes). No scheduler: an idle instance costs no reads. Only one reload runs at a time (non-reentrant `AtomicBoolean`, re-checked after taking it); other requests serve the current copy. Movies included during a reload are merged into the fresh snapshot.
 - If a refresh fails, keep serving the old snapshot, log a warning and retry only after a **full interval**: a failed load can be billed for every document it read.
-- `movies()` and `isEmpty()` run the refresh check. Get by id (a later slice) will look the movie up in the same snapshot.
+- `movies()` and `findById()` run the refresh check. Get by id looks the movie up in the same snapshot (`MovieService.findMovie`, 404 when absent).
 
 ## Seed data
 `MovieSeedLoader` (in `movie/service`, an `ApplicationRunner`) reads `src/main/resources/seed/movies.json` (the 20 movies from the provided `movies-compact.json`) when `app.seed.enabled=true` and the catalog is empty.

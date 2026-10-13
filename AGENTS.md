@@ -47,7 +47,10 @@ src/main/java/com/pehmo/movieapi/
                   NewMovie (raw input, all fields nullable), MovieRules (the only home of the movie rules, ADR-0009),
                   InvalidMovieException + FieldViolation, MovieId (deterministic id), TextNormalization (normalize, trim),
                   DuplicateMovieException, MovieStorageException (storage failures without storage types, ADR-0010),
-                  MovieSearchCriteria (sealed: exactly one search field or none), MovieSearch (matching, sorting, paging), MoviePage,
+                  MovieQuery (parses the raw query parameters, reports every problem at once), MoviePageRequest (page and size),
+                  InvalidQueryException, MovieNotFoundException,
+                  MovieSearchCriteria (sealed: exactly one search field or none; search slices), MovieSearch (sorting, paging; matching
+                  added by the search slices), MoviePage,
                   MovieCatalog (in-memory snapshot of all movies), MovieSeedLoader (loads the sample data on startup)
     persistence/  MovieRepository (interface), FirestoreMovieRepository, MovieDocument (storage mapping),
                   FirestoreErrors (recognizes ALREADY_EXISTS)
@@ -117,6 +120,8 @@ Rules:
 | `page`, `size` | integers | Page number (0-based, default 0) and page size (default 20, max 100). |
 
 - One field means one row of this table, except that `minYear` + `maxYear` count together as one field (year) and `minRating` + `maxRating` count together as one field (rating). `page` and `size` are not search fields. Sending two or more different search fields returns `400` naming them; filters are never combined.
+- Unknown query parameters (typos, cache-busters, `utm_*` tags) are rejected with `400`, like unknown body fields (ADR-0002, ADR-0012).
+  `page`/`size` outside their range are `400`, never clamped; a page past the end is `200` with empty `items` and the true totals.
 - A *word* is a whitespace-separated part of the text. Text parameters are trimmed; a blank value counts as not provided. Accents are not folded.
 - Response: `{ "items": [...], "page": 0, "size": 20, "totalItems": 57, "totalPages": 3 }`. Order is fixed: name ascending (case-insensitive), then id. Items contain all movie fields.
 - Examples (one field each): `GET /api/v1/movies?viewerAge=12`, `GET /api/v1/movies?minRating=4`, `GET /api/v1/movies?minYear=2000&maxYear=2009`, `GET /api/v1/movies?genre=sci-fi`, `GET /api/v1/movies?actor=harrison ford`, `GET /api/v1/movies?director=spielberg`, `GET /api/v1/movies?synopsis=missing father`.
@@ -130,7 +135,7 @@ Rules:
    "synopsis": "Ellen Ripley is rescued by a deep salvage team after being in hypersleep for 57 years."}
   ```
 - Errors use RFC 7807 `ProblemDetail`: `400` for invalid input (bad body, `viewerAge` or ratings out of range, `minRating` above `maxRating`, `minYear` above `maxYear`, more than one search field, bad `page`/`size`), `404` not found, `409` duplicate (with `movieId`, the id of the existing movie), `413` request body too large. Never leak stack traces.
-- Every endpoint is annotated for OpenAPI (summary, parameters, response codes) and described in `docs/api.md`. Adding a filter means updating this table, `MovieSearchCriteria`, `MovieSearch`, the OpenAPI annotations, `docs/api.md` and the tests (see the `movie-search` skill).
+- Every endpoint is annotated for OpenAPI (summary, parameters, response codes) and described in `docs/api.md`. Adding a filter means updating this table, `MovieQuery` (known parameters), `MovieSearchCriteria`, `MovieSearch`, the OpenAPI annotations, `docs/api.md` and the tests (see the `movie-search` skill).
 
 ## Persistence and catalog rules (details in the `firestore-persistence` and `movie-search` skills)
 - Firestore is the **durable store only**. Allowed operations: create one movie (atomic, via the deterministic id), read all movies. Get by id reads from `MovieCatalog`, not from Firestore. Do not add filtered Firestore queries or composite indexes: all searching happens in memory (ADR-0007).
@@ -147,13 +152,13 @@ Rules:
 - Booleans read as questions (`isDuplicate`). No abbreviations except well-known ones (`id`, `dto`).
 - Javadoc on every public class and method; explain *why* and any non-obvious rules, not what the code literally does.
 - Methods stay small and do one thing. Prefer early returns over deep nesting. No commented-out code.
-- Custom exceptions carry meaning: `MovieNotFoundException`, `DuplicateMovieException`, `InvalidMovieException`, `InvalidSearchCriteriaException`.
+- Custom exceptions carry meaning: `MovieNotFoundException`, `DuplicateMovieException`, `InvalidMovieException`, `InvalidQueryException`.
 
 ## Testing conventions
 - Test names: `shouldReturn404WhenMovieDoesNotExist`. Body follows Given / When / Then with comments.
 - One behavior per test. No `Thread.sleep`, no dependence on test order or on seed data not created by the test.
 - Build test data with a builder/factory (`MovieTestData.aMovie().withName(...)`), not copy-pasted literals.
-- Unit tests only: service with Mockito (mock `MovieRepository`); controller with `@WebMvcTest`; `MovieSearch` (the core: each search field, paging, ordering), `MovieSearchCriteria` (the one-field rule and validation), `MovieRules` (every boundary, fixed `Clock`), normalization, id generation (golden ids computed outside the code), document mapping, `MovieCatalog` (refresh logic with a mocked repository and a fixed `Clock`) and `MovieSeedLoader` (mocked `MovieService`) directly.
+- Unit tests only: service with Mockito (mock `MovieRepository`); controller with `@WebMvcTest`; `MovieSearch` (the core: each search field, paging, ordering), `MovieSearchCriteria` (the one-field rule and validation), `MovieQuery` (parameter parsing: paging range, whole numbers, repeated and unknown names), `MovieRules` (every boundary, fixed `Clock`), normalization, id generation (golden ids computed outside the code), document mapping, `MovieCatalog` (refresh logic with a mocked repository and a fixed `Clock`) and `MovieSeedLoader` (mocked `MovieService`) directly.
 - Keep `FirestoreMovieRepository` and `FirestoreConfig` thin (query building and mapping only): they have no automated tests and are excluded from the JaCoCo rule.
   `MovieApiApplication` is excluded too: it only bootstraps Spring, so keep it free of logic (ADR-0008).
 - API tests: the Postman collection in `postman/` (add a movie, list all movies, search with one search field at a time) is written by the `postman-test-writer` agent and run by hand against the deployed service. It is not part of `./gradlew check`. Each run adds one test movie (name starts with `0 Pmtest`) to the real database, and there is no delete endpoint, so leftovers are removed by hand in the Firestore console.

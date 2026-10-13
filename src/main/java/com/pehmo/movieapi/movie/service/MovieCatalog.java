@@ -9,6 +9,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
@@ -75,9 +76,10 @@ public final class MovieCatalog {
     return snapshot.get().movies();
   }
 
-  /** Tells whether the catalog holds no movie at all; reloads first if stale. */
-  public boolean isEmpty() {
-    return movies().isEmpty();
+  /** Returns the movie with this id, if the catalog has it; reloads first if stale. */
+  public Optional<Movie> findById(String id) {
+    reloadIfStale();
+    return Optional.ofNullable(snapshot.get().byId().get(id));
   }
 
   /**

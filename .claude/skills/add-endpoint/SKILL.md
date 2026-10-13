@@ -27,7 +27,7 @@ Ask the `unit-test-writer` agent to write unit tests from the contract (search, 
 Expect them to fail at this point, which proves they test something.
 
 ## 5. Implement, bottom-up
-Persistence (only if storage changes: `MovieDocument` mapping, `FirestoreMovieRepository`; see the `firestore-persistence` skill) -> service (rules, `MovieSearchCriteria`/`MovieSearch` for filters, see the `movie-search` skill, exceptions) -> web (DTO records, mapper, controller with OpenAPI annotations).
+Persistence (only if storage changes: `MovieDocument` mapping, `FirestoreMovieRepository`; see the `firestore-persistence` skill) -> service (rules, `MovieQuery`/`MovieSearchCriteria`/`MovieSearch` for filters, see the `movie-search` skill, exceptions) -> web (DTO records, mapper, controller with OpenAPI annotations).
 Run `./gradlew test` after each layer. Keep names intention-revealing and write Javadoc as you go, explaining *why*.
 Storage changes (new fields) are documented in `docs/firestore-model.md`. New filters need no Firestore change (ADR-0007); document their semantics in `docs/api.md`.
 

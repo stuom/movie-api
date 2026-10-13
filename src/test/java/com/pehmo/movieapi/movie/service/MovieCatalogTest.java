@@ -12,6 +12,7 @@ import com.pehmo.movieapi.movie.persistence.MovieRepository;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -67,20 +68,7 @@ class MovieCatalogTest {
       MovieCatalog catalog = catalog();
 
       // then
-      assertThat(catalog.isEmpty()).isTrue();
       assertThat(catalog.movies()).isEmpty();
-    }
-
-    @Test
-    void shouldNotBeEmptyWhenRepositoryHasMovies() {
-      // given
-      when(repository.findAll()).thenReturn(List.of(aliens));
-
-      // when
-      MovieCatalog catalog = catalog();
-
-      // then
-      assertThat(catalog.isEmpty()).isFalse();
     }
 
     @Test
@@ -148,21 +136,6 @@ class MovieCatalogTest {
 
       // then
       assertThat(movies).containsExactly(heat);
-      verify(repository, times(2)).findAll();
-    }
-
-    @Test
-    void shouldReloadOnIsEmptyWhenIntervalHasElapsed() {
-      // given
-      when(repository.findAll()).thenReturn(List.of()).thenReturn(List.of(aliens));
-      MovieCatalog catalog = catalog();
-      clock.advance(INTERVAL);
-
-      // when
-      boolean empty = catalog.isEmpty();
-
-      // then
-      assertThat(empty).isFalse();
       verify(repository, times(2)).findAll();
     }
 
@@ -338,6 +311,94 @@ class MovieCatalogTest {
   }
 
   @Nested
+  class FindingById {
+
+    @Test
+    void shouldReturnMovieWhenIdIsInCatalog() {
+      // given
+      when(repository.findAll()).thenReturn(List.of(aliens, heat));
+      MovieCatalog catalog = catalog();
+
+      // when
+      Optional<Movie> found = catalog.findById(heat.id());
+
+      // then
+      assertThat(found).contains(heat);
+    }
+
+    @Test
+    void shouldReturnEmptyWhenIdIsUnknown() {
+      // given
+      when(repository.findAll()).thenReturn(List.of(aliens));
+      MovieCatalog catalog = catalog();
+
+      // when
+      Optional<Movie> found = catalog.findById("unknown-id");
+
+      // then
+      assertThat(found).isEmpty();
+    }
+
+    @Test
+    void shouldFindMovieWhenItWasIncluded() {
+      // given
+      when(repository.findAll()).thenReturn(List.of(aliens));
+      MovieCatalog catalog = catalog();
+      catalog.include(heat);
+
+      // when
+      Optional<Movie> found = catalog.findById(heat.id());
+
+      // then
+      assertThat(found).contains(heat);
+    }
+
+    @Test
+    void shouldReloadWhenIntervalHasElapsed() {
+      // given
+      when(repository.findAll()).thenReturn(List.of(aliens)).thenReturn(List.of(heat));
+      MovieCatalog catalog = catalog();
+      clock.advance(INTERVAL);
+
+      // when
+      Optional<Movie> found = catalog.findById(heat.id());
+
+      // then
+      assertThat(found).contains(heat);
+      assertThat(catalog.findById(aliens.id())).isEmpty();
+      verify(repository, times(2)).findAll();
+    }
+
+    @Test
+    void shouldNotReloadWhenIntervalHasNotElapsed() {
+      // given
+      when(repository.findAll()).thenReturn(List.of(aliens));
+      MovieCatalog catalog = catalog();
+      clock.advance(INTERVAL.minusNanos(1));
+
+      // when
+      catalog.findById(aliens.id());
+
+      // then
+      verify(repository, times(1)).findAll();
+    }
+
+    @Test
+    void shouldServePreviousCopyWhenReloadFails() {
+      // given
+      when(repository.findAll()).thenReturn(List.of(aliens)).thenThrow(storageFailure());
+      MovieCatalog catalog = catalog();
+      clock.advance(INTERVAL);
+
+      // when
+      Optional<Movie> found = catalog.findById(aliens.id());
+
+      // then
+      assertThat(found).contains(aliens);
+    }
+  }
+
+  @Nested
   class Including {
 
     @Test
@@ -354,7 +415,7 @@ class MovieCatalogTest {
     }
 
     @Test
-    void shouldNotBeEmptyAfterAddingToEmptyCatalog() {
+    void shouldContainOnlyIncludedMovieAfterAddingToEmptyCatalog() {
       // given
       when(repository.findAll()).thenReturn(List.of());
       MovieCatalog catalog = catalog();
@@ -363,7 +424,7 @@ class MovieCatalogTest {
       catalog.include(heat);
 
       // then
-      assertThat(catalog.isEmpty()).isFalse();
+      assertThat(catalog.movies()).containsExactly(heat);
     }
 
     @Test

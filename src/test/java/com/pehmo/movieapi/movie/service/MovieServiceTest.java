@@ -7,12 +7,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import com.pehmo.movieapi.movie.persistence.MovieRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -140,6 +142,76 @@ class MovieServiceTest {
 
     // then
     verifyNoInteractions(catalog);
+  }
+
+  @Test
+  void shouldReturnMovieWhenCatalogHasId() {
+    // given
+    Movie movie = MovieTestData.aMovie().buildMovie();
+    when(catalog.findById(movie.id())).thenReturn(Optional.of(movie));
+
+    // when
+    Movie found = service.findMovie(movie.id());
+
+    // then
+    assertThat(found).isEqualTo(movie);
+  }
+
+  @Test
+  void shouldThrowMovieNotFoundExceptionWithIdWhenCatalogDoesNotHaveId() {
+    // given
+    when(catalog.findById("missing")).thenReturn(Optional.empty());
+
+    // when / then
+    assertThatThrownBy(() -> service.findMovie("missing"))
+        .isInstanceOfSatisfying(
+            MovieNotFoundException.class, thrown -> assertThat(thrown.id()).isEqualTo("missing"));
+  }
+
+  @Test
+  void shouldNotTouchRepositoryWhenFindingMovie() {
+    // given
+    when(catalog.findById("missing")).thenReturn(Optional.empty());
+
+    // when
+    assertThatThrownBy(() -> service.findMovie("missing"))
+        .isInstanceOf(MovieNotFoundException.class);
+
+    // then
+    verifyNoInteractions(repository);
+  }
+
+  @Test
+  void shouldReturnSortedPageOfCatalogSnapshotWhenListingMovies() {
+    // given
+    Movie brazil = MovieTestData.aMovie().withName("Brazil").buildMovie();
+    Movie alien = MovieTestData.aMovie().withName("Alien").buildMovie();
+    Movie heat = MovieTestData.aMovie().withName("Heat").buildMovie();
+    when(catalog.movies()).thenReturn(List.of(brazil, alien, heat));
+    MovieQuery query = new MovieQuery(new MoviePageRequest(1, 2));
+
+    // when
+    MoviePage page = service.listMovies(query);
+
+    // then
+    assertThat(page.items()).containsExactly(heat);
+    assertThat(page.page()).isEqualTo(1);
+    assertThat(page.size()).isEqualTo(2);
+    assertThat(page.totalItems()).isEqualTo(3);
+    assertThat(page.totalPages()).isEqualTo(2);
+  }
+
+  @Test
+  void shouldReturnEmptyPageWhenCatalogIsEmpty() {
+    // given
+    when(catalog.movies()).thenReturn(List.of());
+
+    // when
+    MoviePage page = service.listMovies(new MovieQuery(new MoviePageRequest(0, 20)));
+
+    // then
+    assertThat(page.items()).isEmpty();
+    assertThat(page.totalItems()).isZero();
   }
 
   @Test

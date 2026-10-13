@@ -5,7 +5,10 @@ import com.fasterxml.jackson.core.exc.StreamConstraintsException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.pehmo.movieapi.movie.service.DuplicateMovieException;
+import com.pehmo.movieapi.movie.service.FieldViolation;
 import com.pehmo.movieapi.movie.service.InvalidMovieException;
+import com.pehmo.movieapi.movie.service.InvalidQueryException;
+import com.pehmo.movieapi.movie.service.MovieNotFoundException;
 import com.pehmo.movieapi.movie.service.MovieStorageException;
 import java.util.List;
 import org.slf4j.Logger;
@@ -32,11 +35,10 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
  *
  * <p>Problem members: {@code type} stays {@code about:blank} and {@code title} the status phrase;
  * {@code instance} is filled with the request path by Spring. Extensions: {@code violations} for
- * {@code 400} body errors and {@code movieId} for duplicates.
+ * {@code 400} body and query parameter errors, and {@code movieId} for duplicates.
  *
  * <p>The catch-all {@link #handleUnexpected} runs before Spring's {@code @ResponseStatus}
- * resolution, so every new exception that should not be a {@code 500} (such as a future {@code
- * MovieNotFoundException}) needs its own handler here.
+ * resolution, so every new exception that should not be a {@code 500} needs its own handler here.
  */
 @RestControllerAdvice
 public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
@@ -56,14 +58,13 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
   private static final String BODY_TOO_LARGE =
       "The request body is too large; a movie fits in " + JacksonConfig.MAX_BODY_KILOBYTES + " KB.";
   private static final String NO_ENDPOINT = "There is no endpoint at this path.";
+  private static final String NO_MOVIE = "There is no movie with this id.";
+  private static final String INVALID_QUERY = "The query parameters are invalid; see violations.";
 
   /** A movie that breaks rules: every violation, with its field path, in field order. */
   @ExceptionHandler(InvalidMovieException.class)
   public ProblemDetail handleInvalidMovie(InvalidMovieException exception) {
-    List<ProblemViolation> violations =
-        exception.violations().stream()
-            .map(violation -> new ProblemViolation(violation.field(), violation.message()))
-            .toList();
+    List<ProblemViolation> violations = toProblemViolations(exception.violations());
     ProblemDetail problem =
         ProblemDetail.forStatusAndDetail(
             HttpStatus.BAD_REQUEST,
@@ -71,6 +72,20 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
                 .formatted(violations.size(), violations.size() == 1 ? "rule" : "rules"));
     problem.setProperty(VIOLATIONS, violations);
     return problem;
+  }
+
+  /** Unusable query parameters: every problem, page and size first, then unknown names. */
+  @ExceptionHandler(InvalidQueryException.class)
+  public ProblemDetail handleInvalidQuery(InvalidQueryException exception) {
+    ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, INVALID_QUERY);
+    problem.setProperty(VIOLATIONS, toProblemViolations(exception.violations()));
+    return problem;
+  }
+
+  /** An unknown id. The id is not repeated: it is client text, like the name in a duplicate. */
+  @ExceptionHandler(MovieNotFoundException.class)
+  public ProblemDetail handleMovieNotFound(MovieNotFoundException exception) {
+    return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, NO_MOVIE);
   }
 
   /** A second copy of an existing film; {@code movieId} lets the client find the existing one. */
@@ -137,6 +152,12 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
       WebRequest request) {
     ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, NO_ENDPOINT);
     return handleExceptionInternal(exception, problem, headers, status, request);
+  }
+
+  private static List<ProblemViolation> toProblemViolations(List<FieldViolation> violations) {
+    return violations.stream()
+        .map(violation -> new ProblemViolation(violation.field(), violation.message()))
+        .toList();
   }
 
   private static String problemWith(JsonMappingException mapping) {

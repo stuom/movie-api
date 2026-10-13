@@ -50,4 +50,19 @@ public class MovieService {
     LOG.info("Added movie {} ({})", movie.id(), movie.year());
     return movie;
   }
+
+  /**
+   * Returns the movie with this id. It reads the catalog, like listing, so a movie is visible to
+   * both or to neither (ADR-0007).
+   *
+   * @throws MovieNotFoundException if the catalog has no movie with this id
+   */
+  public Movie findMovie(String id) {
+    return catalog.findById(id).orElseThrow(() -> new MovieNotFoundException(id));
+  }
+
+  /** Returns the requested page of the whole catalog, sorted by name and then id. */
+  public MoviePage listMovies(MovieQuery query) {
+    return MovieSearch.pageOf(catalog.movies(), query.paging());
+  }
 }

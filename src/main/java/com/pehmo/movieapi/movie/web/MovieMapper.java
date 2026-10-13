@@ -1,6 +1,7 @@
 package com.pehmo.movieapi.movie.web;
 
 import com.pehmo.movieapi.movie.service.Movie;
+import com.pehmo.movieapi.movie.service.MoviePage;
 import com.pehmo.movieapi.movie.service.NewMovie;
 import com.pehmo.movieapi.movie.service.Person;
 import java.util.ArrayList;
@@ -42,6 +43,16 @@ final class MovieMapper {
         toDto(movie.director()),
         movie.actors().stream().map(MovieMapper::toDto).toList(),
         movie.synopsis());
+  }
+
+  /** Returns the page as the API shows it, each movie in the {@link #toResponse} shape. */
+  static MoviePageResponse toPageResponse(MoviePage page) {
+    return new MoviePageResponse(
+        page.items().stream().map(MovieMapper::toResponse).toList(),
+        page.page(),
+        page.size(),
+        page.totalItems(),
+        page.totalPages());
   }
 
   private static NewMovie.PersonInput toPersonInput(PersonDto person) {

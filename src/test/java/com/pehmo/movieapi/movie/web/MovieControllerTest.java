@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -24,6 +25,10 @@ import com.pehmo.movieapi.movie.service.DuplicateMovieException;
 import com.pehmo.movieapi.movie.service.FieldViolation;
 import com.pehmo.movieapi.movie.service.InvalidMovieException;
 import com.pehmo.movieapi.movie.service.Movie;
+import com.pehmo.movieapi.movie.service.MovieNotFoundException;
+import com.pehmo.movieapi.movie.service.MoviePage;
+import com.pehmo.movieapi.movie.service.MoviePageRequest;
+import com.pehmo.movieapi.movie.service.MovieQuery;
 import com.pehmo.movieapi.movie.service.MovieService;
 import com.pehmo.movieapi.movie.service.MovieStorageException;
 import com.pehmo.movieapi.movie.service.MovieTestData;
@@ -115,6 +120,201 @@ class MovieControllerTest {
   private static ResultActions expectProblem(
       ResultActions result, HttpStatus expected, String detail, String instance) throws Exception {
     return expectProblem(result, expected, instance).andExpect(jsonPath("$.detail").value(detail));
+  }
+
+  @Nested
+  class Fetched {
+
+    @Test
+    void shouldReturn200WithFullBodyWhenMovieExists() throws Exception {
+      // given
+      Movie movie = MovieTestData.aMovie().buildMovie();
+      given(movieService.findMovie(movie.id())).willReturn(movie);
+
+      // when
+      ResultActions result = mockMvc.perform(get(PATH + "/" + movie.id()));
+
+      // then
+      result
+          .andExpect(status().isOk())
+          .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+          .andExpect(jsonPath("$.id").value(movie.id()))
+          .andExpect(jsonPath("$.name").value("Aliens"))
+          .andExpect(jsonPath("$.year").value(1986))
+          .andExpect(jsonPath("$.genres[0]").value("Action"))
+          .andExpect(jsonPath("$.genres[1]").value("Sci-fi"))
+          .andExpect(jsonPath("$.ageLimit").value(16))
+          .andExpect(jsonPath("$.rating").value(5))
+          .andExpect(jsonPath("$.director.firstName").value("James"))
+          .andExpect(jsonPath("$.director.lastName").value("Cameron"))
+          .andExpect(jsonPath("$.actors[0].firstName").value("Sigourney"))
+          .andExpect(jsonPath("$.actors[0].lastName").value("Weaver"))
+          .andExpect(
+              jsonPath("$.synopsis").value("Ellen Ripley is rescued by a deep salvage team."));
+    }
+
+    @Test
+    void shouldReturn404ProblemWithoutEchoingIdWhenMovieDoesNotExist() throws Exception {
+      // given
+      String id = "no-such-movie-id";
+      given(movieService.findMovie(id)).willThrow(new MovieNotFoundException(id));
+
+      // when
+      ResultActions result = mockMvc.perform(get(PATH + "/" + id));
+
+      // then
+      expectProblem(
+              result, HttpStatus.NOT_FOUND, "There is no movie with this id.", PATH + "/" + id)
+          .andExpect(jsonPath("$.detail").value(not(containsString(id))))
+          .andExpect(jsonPath("$.title").value(not(containsString(id))));
+    }
+  }
+
+  @Nested
+  class Listed {
+
+    private static final String LIST_PROBLEM_DETAIL =
+        "The query parameters are invalid; see violations.";
+
+    @Test
+    void shouldPassDefaultPagingToServiceAndReturnPageShapeWhenNoParametersAreGiven()
+        throws Exception {
+      // given
+      Movie movie = MovieTestData.aMovie().buildMovie();
+      given(movieService.listMovies(any(MovieQuery.class)))
+          .willReturn(new MoviePage(List.of(movie), 0, 20, 1, 1));
+
+      // when
+      ResultActions result = mockMvc.perform(get(PATH));
+
+      // then
+      verify(movieService).listMovies(new MovieQuery(new MoviePageRequest(0, 20)));
+      result
+          .andExpect(status().isOk())
+          .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+          .andExpect(jsonPath("$.items.length()").value(1))
+          .andExpect(jsonPath("$.items[0].id").value(movie.id()))
+          .andExpect(jsonPath("$.items[0].name").value("Aliens"))
+          .andExpect(jsonPath("$.page").value(0))
+          .andExpect(jsonPath("$.size").value(20))
+          .andExpect(jsonPath("$.totalItems").value(1))
+          .andExpect(jsonPath("$.totalPages").value(1));
+    }
+
+    @Test
+    void shouldPassPageAndSizeToServiceWhenBothAreGiven() throws Exception {
+      // given
+      given(movieService.listMovies(any(MovieQuery.class)))
+          .willReturn(new MoviePage(List.of(), 1, 10, 0, 0));
+
+      // when
+      ResultActions result = mockMvc.perform(get(PATH).param("page", "1").param("size", "10"));
+
+      // then
+      result.andExpect(status().isOk());
+      verify(movieService).listMovies(new MovieQuery(new MoviePageRequest(1, 10)));
+    }
+
+    @Test
+    void shouldReturnEmptyItemsArrayWhenPageHasNoMovies() throws Exception {
+      // given
+      given(movieService.listMovies(any(MovieQuery.class)))
+          .willReturn(new MoviePage(List.of(), 0, 20, 0, 0));
+
+      // when
+      ResultActions result = mockMvc.perform(get(PATH));
+
+      // then
+      result
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.items").isArray())
+          .andExpect(jsonPath("$.items").isEmpty())
+          .andExpect(jsonPath("$.page").value(0))
+          .andExpect(jsonPath("$.size").value(20))
+          .andExpect(jsonPath("$.totalItems").value(0))
+          .andExpect(jsonPath("$.totalPages").value(0));
+    }
+
+    @Test
+    void shouldReturn400WithViolationAndNotCallServiceWhenSizeIsAboveMaximum() throws Exception {
+      // given
+      MockHttpServletRequestBuilder request = get(PATH).param("size", "101");
+
+      // when
+      ResultActions result = mockMvc.perform(request);
+
+      // then
+      expectProblem(result, HttpStatus.BAD_REQUEST, LIST_PROBLEM_DETAIL, PATH)
+          .andExpect(jsonPath("$.violations.length()").value(1))
+          .andExpect(jsonPath("$.violations[0].field").value("size"))
+          .andExpect(jsonPath("$.violations[0].message").value("must be between 1 and 100"));
+      verifyNoInteractions(movieService);
+    }
+
+    @Test
+    void shouldReturn400WithoutEchoingValueWhenPageIsNotWholeNumber() throws Exception {
+      // given
+      MockHttpServletRequestBuilder request = get(PATH).param("page", "abc");
+
+      // when
+      ResultActions result = mockMvc.perform(request);
+
+      // then
+      expectProblem(result, HttpStatus.BAD_REQUEST, LIST_PROBLEM_DETAIL, PATH)
+          .andExpect(jsonPath("$.violations[0].field").value("page"))
+          .andExpect(jsonPath("$.violations[0].message").value("must be a whole number"))
+          .andExpect(content().string(not(containsString("abc"))));
+      verifyNoInteractions(movieService);
+    }
+
+    @Test
+    void shouldReturn400WhenParameterNameIsUnknown() throws Exception {
+      // given
+      MockHttpServletRequestBuilder request = get(PATH).param("pgae", "2");
+
+      // when
+      ResultActions result = mockMvc.perform(request);
+
+      // then
+      expectProblem(result, HttpStatus.BAD_REQUEST, LIST_PROBLEM_DETAIL, PATH)
+          .andExpect(jsonPath("$.violations.length()").value(1))
+          .andExpect(jsonPath("$.violations[0].field").value("pgae"))
+          .andExpect(jsonPath("$.violations[0].message").value("is not a known parameter"));
+      verifyNoInteractions(movieService);
+    }
+
+    @Test
+    void shouldReturn400WhenParameterIsRepeated() throws Exception {
+      // given
+      MockHttpServletRequestBuilder request = get(PATH).param("page", "1", "2");
+
+      // when
+      ResultActions result = mockMvc.perform(request);
+
+      // then
+      expectProblem(result, HttpStatus.BAD_REQUEST, LIST_PROBLEM_DETAIL, PATH)
+          .andExpect(jsonPath("$.violations[0].field").value("page"))
+          .andExpect(jsonPath("$.violations[0].message").value("must be given only once"));
+      verifyNoInteractions(movieService);
+    }
+
+    @Test
+    void shouldReturnAllViolationsInOrderWhenSeveralParametersAreInvalid() throws Exception {
+      // given
+      MockHttpServletRequestBuilder request =
+          get(PATH).param("size", "0").param("page", "-1").param("genre", "drama");
+
+      // when
+      ResultActions result = mockMvc.perform(request);
+
+      // then
+      expectProblem(result, HttpStatus.BAD_REQUEST, LIST_PROBLEM_DETAIL, PATH)
+          .andExpect(jsonPath("$.violations.length()").value(3))
+          .andExpect(jsonPath("$.violations[0].field").value("page"))
+          .andExpect(jsonPath("$.violations[1].field").value("size"))
+          .andExpect(jsonPath("$.violations[2].field").value("genre"));
+      verifyNoInteractions(movieService);
+    }
   }
 
   @Nested
@@ -503,11 +703,11 @@ class MovieControllerTest {
     }
 
     @Test
-    void shouldReturn405ProblemWhenListingMoviesBeforeItExists() throws Exception {
+    void shouldReturn405ProblemWhenDeletingMovies() throws Exception {
       // given nothing
 
       // when
-      ResultActions result = mockMvc.perform(get(PATH));
+      ResultActions result = mockMvc.perform(delete(PATH));
 
       // then
       expectProblem(result, HttpStatus.METHOD_NOT_ALLOWED, PATH)
@@ -519,11 +719,23 @@ class MovieControllerTest {
       // given nothing
 
       // when
-      ResultActions result = mockMvc.perform(get(PATH + "/abc"));
+      ResultActions result = mockMvc.perform(get("/api/v1/unknown"));
 
       // then
       expectProblem(
-          result, HttpStatus.NOT_FOUND, "There is no endpoint at this path.", PATH + "/abc");
+          result, HttpStatus.NOT_FOUND, "There is no endpoint at this path.", "/api/v1/unknown");
+    }
+
+    @Test
+    void shouldReturn404ProblemWhenMoviePathHasTrailingSlashAndNoId() throws Exception {
+      // given nothing
+
+      // when
+      ResultActions result = mockMvc.perform(get(PATH + "/"));
+
+      // then
+      expectProblem(result, HttpStatus.NOT_FOUND, "There is no endpoint at this path.", PATH + "/");
+      verifyNoInteractions(movieService);
     }
   }
 

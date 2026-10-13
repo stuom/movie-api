@@ -7,8 +7,8 @@ machine-readable one is the OpenAPI description served by the deployed service a
 | Endpoint | Purpose | Status |
 |---|---|---|
 | `POST /api/v1/movies` | Add a movie | Available |
-| `GET /api/v1/movies/{id}` | Fetch one movie | Planned (next slices) |
-| `GET /api/v1/movies` | List and search movies | Planned (next slices) |
+| `GET /api/v1/movies/{id}` | Fetch one movie | Available |
+| `GET /api/v1/movies` | List movies a page at a time | Available (search fields come in the next slices) |
 
 ## Conventions
 - Base path `/api/v1`. Request and response bodies are JSON (`Content-Type: application/json`).
@@ -81,8 +81,7 @@ curl -i -X POST "$BASE_URL/api/v1/movies" \
 
 ### Success: `201 Created`
 - `Location` header: where the new movie can be found, as a path relative to the service,
-  `/api/v1/movies/{id}`. (`GET /api/v1/movies/{id}` arrives in a later slice; until then the `id` in
-  the body is the reference to keep.)
+  `/api/v1/movies/{id}`, which [fetches it](#fetch-one-movie-get-apiv1moviesid).
 - Body: the movie as stored, with its `id`, trimmed texts, and every field present.
 
 ```http
@@ -121,6 +120,141 @@ A movie without the optional fields comes back with `"director": null`, `"actors
 When the store did not answer in time, the movie **may have been saved anyway**. Retrying the same
 request is safe: a `409` on the retry means the first attempt was stored.
 
+## Fetch one movie: `GET /api/v1/movies/{id}`
+
+Returns one movie by its id. The movie comes from the service's in-memory copy of the catalog, the same
+copy that listing reads, so a movie is visible to both or to neither (ADR-0007).
+
+```bash
+curl -i "$BASE_URL/api/v1/movies/53e87be920fdef6e6176fa0c355406d8"
+```
+
+### Success: `200 OK`
+The body is the movie in the same shape as the `201` body of [Add a movie](#add-a-movie-post-apiv1movies).
+
+### Failures
+
+| Status | When | Body |
+|---|---|---|
+| `404 Not Found` | No movie has this id. Any text that is not the id of a stored movie gives `404`; there is no separate format check (ids are 32 lowercase hex characters). | Problem detail, `detail` `"There is no movie with this id."`. The id is not repeated in the `detail`. |
+| `500 Internal Server Error` | An unexpected error occurred. A failed catalog refresh is not one: the previous copy keeps being served. | Problem detail, see [`500`](#500-server-error). |
+
+```json
+{
+  "type": "about:blank",
+  "title": "Not Found",
+  "status": 404,
+  "detail": "There is no movie with this id.",
+  "instance": "/api/v1/movies/0123456789abcdef0123456789abcdef"
+}
+```
+
+`GET /api/v1/movies/` (trailing slash, no id) is not this endpoint: it is a `404` with the detail
+`"There is no endpoint at this path."`.
+
+## List movies: `GET /api/v1/movies`
+
+Returns the whole catalog, one page at a time. Search fields (`name`, `genre`, ...) arrive in later
+slices on this same endpoint; until then they are unknown parameters and rejected (see below).
+
+### Query parameters
+
+| Parameter | Type | Default | Allowed |
+|---|---|---|---|
+| `page` | whole number | `0` | `0` or more. Pages are numbered from `0`. |
+| `size` | whole number | `20` | `1` to `100`: the number of movies per page. |
+
+- Both are optional. An empty value (`?page=`) counts as not given, so the default applies. Values are trimmed.
+- A *whole number* is one or more ASCII digits `0`-`9` with an optional leading `-`, within the 32-bit
+  integer range. Anything else is `must be a whole number`, including `+5`, `1.5`, `1e2` and digits
+  from other scripts.
+- Values outside the allowed range are rejected with `400`, never clamped to the nearest allowed value.
+- Any other parameter is rejected with `400`, even with an empty value, so a typo such as `?pgae=2`
+  is noticed instead of silently returning page 0. This includes parameters that clients or tools
+  append on their own, such as cache-busters (`?_=1697212800000`) and tracking tags (`utm_source`,
+  `utm_campaign`, ...): do not add them to requests to this endpoint.
+
+```bash
+curl -i "$BASE_URL/api/v1/movies"
+curl -i "$BASE_URL/api/v1/movies?page=1&size=10"
+```
+
+### Order
+Movies are sorted by name, ignoring case, and movies with the same name by `id`. Precisely: by the
+normalized name (the same normalization as the id: Unicode NFC, trimmed, inner whitespace collapsed,
+lowercase), then by `id`, both compared character by character (UTF-16 code units), not by language
+rules. So the order is the same for every request and every client, and a name starting with an
+accented letter (`Être et avoir`) sorts after `z`.
+
+### Success: `200 OK`
+```json
+{
+  "items": [
+    {
+      "id": "53e87be920fdef6e6176fa0c355406d8",
+      "name": "Aliens",
+      "year": 1986,
+      "genres": ["Action", "Adventure", "Sci-fi"],
+      "ageLimit": 16,
+      "rating": 5,
+      "director": {"firstName": "James", "lastName": "Cameron"},
+      "actors": [{"firstName": "Sigourney", "lastName": "Weaver"}],
+      "synopsis": "Ellen Ripley is rescued by a deep salvage team after being in hypersleep for 57 years."
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalItems": 1,
+  "totalPages": 1
+}
+```
+
+| Member | Meaning |
+|---|---|
+| `items` | The movies on this page, in the order above, each with every movie field. At most `size` entries. |
+| `page` | The page returned (the requested or default `page`). |
+| `size` | The page size used (the requested or default `size`). |
+| `totalItems` | The number of movies in the whole catalog. |
+| `totalPages` | `ceil(totalItems / size)`; `0` when the catalog is empty. The last page is `totalPages - 1`. |
+
+- The last page holds the remainder and may have fewer than `size` items.
+- A page past the end (`page >= totalPages`) is not an error: it returns `200` with `"items": []` and
+  the true `totalItems` and `totalPages`.
+- An empty catalog returns `"items": []`, `"totalItems": 0` and `"totalPages": 0`.
+
+### Failures
+
+| Status | When | Body |
+|---|---|---|
+| `400 Bad Request` | A parameter is out of range, is not a whole number, is given more than once, or is not a known parameter. | Problem detail with a `violations` list naming **every** offending parameter. |
+| `500 Internal Server Error` | An unexpected error occurred. A failed catalog refresh is not one: the previous copy keeps being served. | Problem detail, see [`500`](#500-server-error). |
+
+| Problem | `field` | `message` |
+|---|---|---|
+| `page` below `0` | `page` | `must be 0 or more` |
+| `size` below `1` or above `100` | `size` | `must be between 1 and 100` |
+| Not a whole number (`abc`, `1.5`, `+5`, or outside -2147483648 to 2147483647) | the parameter | `must be a whole number` |
+| Given more than once (`?page=1&page=2`) | the parameter | `must be given only once` |
+| Not a parameter of this endpoint (`?genre=sci-fi`, `?pgae=2`) | the parameter | `is not a known parameter` |
+
+`GET /api/v1/movies?page=-1&size=101&pgae=2`:
+```json
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "The query parameters are invalid; see violations.",
+  "instance": "/api/v1/movies",
+  "violations": [
+    {"field": "page", "message": "must be 0 or more"},
+    {"field": "size", "message": "must be between 1 and 100"},
+    {"field": "pgae", "message": "is not a known parameter"}
+  ]
+}
+```
+Violations are listed in a fixed order: `page`, then `size`, then unknown parameters. The rejected
+value is never repeated in the response; the name of an unknown parameter is, as its `field`.
+
 ## Errors
 Every error, on every endpoint, is an RFC 7807 problem detail with `Content-Type: application/problem+json`
 and these members:
@@ -132,14 +266,14 @@ and these members:
 | `status` | The HTTP status code. |
 | `detail` | A human-readable explanation of this occurrence. |
 | `instance` | The request path. |
-| `violations` | Only on `400` for a request body: `[{"field": ..., "message": ...}]`. `field` is a path such as `name`, `genres[1]`, `director.firstName` or `actors[2].lastName`. |
+| `violations` | Only on `400`: `[{"field": ..., "message": ...}]`. For a request body, `field` is a path such as `name`, `genres[1]`, `director.firstName` or `actors[2].lastName`; for query parameters it is the parameter name, such as `size`. |
 | `movieId` | Only on `409`: the id of the movie that already exists. |
 
 Stack traces, exception names and storage details are never returned.
 
 Spring's own errors use the same format, for example `404 Not Found` for an unknown path (`detail`
 `"There is no endpoint at this path."`), `405 Method Not Allowed` for an unsupported method (such as
-`GET /api/v1/movies` until listing exists) and `406 Not Acceptable` when the `Accept` header excludes
+`DELETE /api/v1/movies`) and `406 Not Acceptable` when the `Accept` header excludes
 JSON.
 Only requests that the web server rejects before they reach the application (for example a
 malformed HTTP request line) get Spring Boot's default error JSON instead.

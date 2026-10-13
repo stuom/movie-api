@@ -3,6 +3,7 @@ package com.pehmo.movieapi.movie.web;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.pehmo.movieapi.movie.service.Movie;
+import com.pehmo.movieapi.movie.service.MoviePage;
 import com.pehmo.movieapi.movie.service.MovieTestData;
 import com.pehmo.movieapi.movie.service.NewMovie;
 import java.util.Arrays;
@@ -94,6 +95,43 @@ class MovieMapperTest {
 
       // then
       assertThat(newMovie.director()).isEqualTo(new NewMovie.PersonInput("James", null));
+    }
+  }
+
+  @Nested
+  class ToPageResponse {
+
+    @Test
+    void shouldMapItemsInOrderAndCopyCountsWhenPageHasMovies() {
+      // given
+      Movie alien = MovieTestData.aMovie().withName("Alien").buildMovie();
+      Movie heat = MovieTestData.aMovie().withName("Heat").buildMovie();
+      MoviePage page = new MoviePage(List.of(alien, heat), 1, 2, 5, 3);
+
+      // when
+      MoviePageResponse response = MovieMapper.toPageResponse(page);
+
+      // then
+      assertThat(response.items())
+          .containsExactly(MovieMapper.toResponse(alien), MovieMapper.toResponse(heat));
+      assertThat(response.page()).isEqualTo(1);
+      assertThat(response.size()).isEqualTo(2);
+      assertThat(response.totalItems()).isEqualTo(5);
+      assertThat(response.totalPages()).isEqualTo(3);
+    }
+
+    @Test
+    void shouldMapNoItemsWhenPageIsEmpty() {
+      // given
+      MoviePage page = new MoviePage(List.of(), 0, 20, 0, 0);
+
+      // when
+      MoviePageResponse response = MovieMapper.toPageResponse(page);
+
+      // then
+      assertThat(response.items()).isEmpty();
+      assertThat(response.totalItems()).isZero();
+      assertThat(response.totalPages()).isZero();
     }
   }
 

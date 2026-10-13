@@ -9,6 +9,7 @@ import java.util.List;
  */
 public final class MovieTestData {
 
+  private String id;
   private String name = "Aliens";
   private Integer year = 1986;
   private List<String> genres = new ArrayList<>(List.of("Action", "Sci-fi"));
@@ -39,6 +40,15 @@ public final class MovieTestData {
   /** Returns a text of exactly {@code length} characters. */
   public static String textOfLength(int length) {
     return "a".repeat(length);
+  }
+
+  /**
+   * Overrides the id that {@link #buildMovie()} derives from name and year, for tests that need
+   * several movies whose names are equal after normalization.
+   */
+  public MovieTestData withId(String newId) {
+    this.id = newId;
+    return this;
   }
 
   public MovieTestData withName(String newName) {
@@ -91,7 +101,7 @@ public final class MovieTestData {
    */
   public Movie buildMovie() {
     return new Movie(
-        MovieId.derivedFrom(name, year),
+        id != null ? id : MovieId.derivedFrom(name, year),
         name,
         year,
         genres == null ? List.of() : genres,

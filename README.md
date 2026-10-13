@@ -3,8 +3,8 @@
 REST service to list, search and add movies, built with Spring Boot 3 on Java 21 and deployed to Google Cloud Run.
 
 > Status: early development. The service builds and enforces the quality gates. It needs Firestore credentials to start, so it runs on Cloud Run only; there is no local run by design.
-> `POST /api/v1/movies` (add a movie) is implemented and unit tested. Fetching one movie (`GET /api/v1/movies/{id}`), listing and search come in the next slice.
-> Do not deploy this state on its own: the `Location` of a new movie points to `GET /api/v1/movies/{id}`, which answers `404` until the next slice is in.
+> Implemented and unit tested: adding a movie (`POST /api/v1/movies`), fetching one movie (`GET /api/v1/movies/{id}`) and listing the whole catalog a page at a time (`GET /api/v1/movies?page=&size=`).
+> The search fields (`name`, `genre`, `actor`, ...) come in the next slices; until then the list endpoint rejects them as unknown parameters (`400`).
 > The Cloud Run deployment setup (`Dockerfile`, `./gradlew deployCloudRun`) has not been added yet.
 
 ## API

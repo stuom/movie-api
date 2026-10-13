@@ -26,7 +26,7 @@ For search tests also provide a small shared catalog (5-8 movies modeled on the 
 ## Which tool for which part
 | Part | Approach | Notes |
 |---|---|---|
-| `MovieSearch`, `MovieSearchCriteria` | plain JUnit, no mocks | The core. Full matrix, including the one-field rule, in the `movie-search` skill |
+| `MovieSearch`, `MovieSearchCriteria`, `MovieQuery` | plain JUnit, no mocks | The core. Full matrix, including the one-field rule, in the `movie-search` skill |
 | `MovieCatalog` | plain JUnit + Mockito (`MovieRepository`) + controllable test clock (`MutableClock`) | Initial load, `include` after create (no duplicate id, next reload unchanged), no reload before the interval, reload exactly at it, failed refresh keeps the old snapshot and waits a full interval, merge of movies included during a reload |
 | `MovieService` | Mockito (`MovieRepository`, `MovieCatalog` or real catalog with a stub repository) | Create: an invalid movie -> `InvalidMovieException` from `MovieRules` (rules themselves are tested in `MovieRulesTest`), duplicate -> `DuplicateMovieException`, catalog updated; get by id; search delegates correctly |
 | Controller | `@WebMvcTest(MovieController.class)` + `MockMvc`, mocked service | Parameter binding for every filter, defaults, `Location` header, validation errors, response shape (`items`, `page`, `size`, `totalItems`, `totalPages`) |
