@@ -4,10 +4,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Builds {@link NewMovie} test data. Defaults are valid, so each test states only the field it is
- * about.
+ * Builds {@link NewMovie} (raw input) and {@link Movie} (stored) test data. Defaults are valid, so
+ * each test states only the field it is about.
  */
-final class MovieTestData {
+public final class MovieTestData {
 
   private String name = "Aliens";
   private Integer year = 1986;
@@ -22,61 +22,87 @@ final class MovieTestData {
   private MovieTestData() {}
 
   /** Starts a valid new movie. */
-  static MovieTestData aNewMovie() {
+  public static MovieTestData aNewMovie() {
+    return new MovieTestData();
+  }
+
+  /** Starts a valid movie, to be finished with {@link #buildMovie()}. */
+  public static MovieTestData aMovie() {
     return new MovieTestData();
   }
 
   /** Creates a person input as entered. */
-  static NewMovie.PersonInput aPerson(String firstName, String lastName) {
+  public static NewMovie.PersonInput aPerson(String firstName, String lastName) {
     return new NewMovie.PersonInput(firstName, lastName);
   }
 
   /** Returns a text of exactly {@code length} characters. */
-  static String textOfLength(int length) {
+  public static String textOfLength(int length) {
     return "a".repeat(length);
   }
 
-  MovieTestData withName(String newName) {
+  public MovieTestData withName(String newName) {
     this.name = newName;
     return this;
   }
 
-  MovieTestData withYear(Integer newYear) {
+  public MovieTestData withYear(Integer newYear) {
     this.year = newYear;
     return this;
   }
 
-  MovieTestData withGenres(List<String> newGenres) {
-    this.genres = newGenres;
+  public MovieTestData withGenres(List<String> newGenres) {
+    this.genres = newGenres == null ? null : new ArrayList<>(newGenres);
     return this;
   }
 
-  MovieTestData withAgeLimit(Integer newAgeLimit) {
+  public MovieTestData withAgeLimit(Integer newAgeLimit) {
     this.ageLimit = newAgeLimit;
     return this;
   }
 
-  MovieTestData withRating(Integer newRating) {
+  public MovieTestData withRating(Integer newRating) {
     this.rating = newRating;
     return this;
   }
 
-  MovieTestData withDirector(NewMovie.PersonInput newDirector) {
+  public MovieTestData withDirector(NewMovie.PersonInput newDirector) {
     this.director = newDirector;
     return this;
   }
 
-  MovieTestData withActors(List<NewMovie.PersonInput> newActors) {
-    this.actors = newActors;
+  public MovieTestData withActors(List<NewMovie.PersonInput> newActors) {
+    this.actors = newActors == null ? null : new ArrayList<>(newActors);
     return this;
   }
 
-  MovieTestData withSynopsis(String newSynopsis) {
+  public MovieTestData withSynopsis(String newSynopsis) {
     this.synopsis = newSynopsis;
     return this;
   }
 
-  NewMovie build() {
+  public NewMovie build() {
     return new NewMovie(name, year, genres, ageLimit, rating, director, actors, synopsis);
+  }
+
+  /**
+   * Builds a stored {@link Movie} directly, with the id derived from name and year and the texts
+   * exactly as given (no trimming).
+   */
+  public Movie buildMovie() {
+    return new Movie(
+        MovieId.derivedFrom(name, year),
+        name,
+        year,
+        genres == null ? List.of() : genres,
+        ageLimit,
+        rating,
+        director == null ? null : toPerson(director),
+        actors == null ? List.of() : actors.stream().map(MovieTestData::toPerson).toList(),
+        synopsis);
+  }
+
+  private static Person toPerson(NewMovie.PersonInput input) {
+    return new Person(input.firstName(), input.lastName());
   }
 }

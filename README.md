@@ -2,8 +2,9 @@
 
 REST service to list, search and add movies, built with Spring Boot 3 on Java 21 and deployed to Google Cloud Run.
 
-> Status: early development. The service builds, starts and enforces the quality gates, and the movie domain model
-> (validation rules, text normalization, deterministic id) is in place with unit tests. The movie endpoints come in the next slices.
+> Status: early development. The service builds and enforces the quality gates (it now needs Firestore credentials to start, so it runs on Cloud Run only), and the movie domain model
+> (validation rules, text normalization, deterministic id) and the Firestore storage layer are in place with unit tests.
+> The movie endpoints come in the next slices.
 
 ## Prerequisites
 - **Java 21 JDK**, discoverable by Gradle: either set `JAVA_HOME` to it, or list its path in
@@ -24,3 +25,4 @@ What each gate enforces and why: [ADR-0008](docs/adr/0008-quality-gates-and-buil
 ## More
 - Project conventions for humans and AI agents: [AGENTS.md](AGENTS.md)
 - Architecture decisions: [docs/adr](docs/adr/README.md)
+- Firestore data model: [docs/firestore-model.md](docs/firestore-model.md)

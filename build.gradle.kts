@@ -30,6 +30,8 @@ dependencies {
     // the BOM to every configuration, including SpotBugs' own classpath, and downgrades libraries SpotBugs needs.
     implementation(platform(SpringBootPlugin.BOM_COORDINATES))
     implementation("org.springframework.boot:spring-boot-starter-web")
+    // Plain Firestore client, not Spring Data Firestore (reactive only); ADR-0003. Not managed by the Boot BOM.
+    implementation("com.google.cloud:google-cloud-firestore:3.49.0")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

@@ -14,5 +14,6 @@ Add a new ADR instead of rewriting history; mark old ones as superseded.
 | [0007](0007-in-memory-search-over-firestore-catalog.md) | In-memory search over a Firestore-backed catalog | Accepted |
 | [0008](0008-quality-gates-and-build-verification.md) | Quality gates and build verification | Accepted |
 | [0009](0009-movie-validation-in-plain-java.md) | Movie validation in plain Java at the service boundary | Accepted |
+| [0010](0010-storage-errors-and-document-mapping.md) | Storage errors, bounded waits and document mapping | Accepted |
 
 Template: `.claude/skills/document-change/templates/adr-template.md`

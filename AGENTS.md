@@ -46,9 +46,11 @@ src/main/java/com/pehmo/movieapi/
     service/      MovieService (business rules), Movie and Person (domain records),
                   NewMovie (raw input, all fields nullable), MovieRules (the only home of the movie rules, ADR-0009),
                   InvalidMovieException + FieldViolation, MovieId (deterministic id), TextNormalization (normalize, trim),
+                  DuplicateMovieException, MovieStorageException (storage failures without storage types, ADR-0010),
                   MovieSearchCriteria (sealed: exactly one search field or none), MovieSearch (matching, sorting, paging), MoviePage,
                   MovieCatalog (in-memory snapshot of all movies), MovieSeedLoader (loads the sample data on startup)
-    persistence/  MovieRepository (interface), FirestoreMovieRepository, MovieDocument (storage mapping)
+    persistence/  MovieRepository (interface), FirestoreMovieRepository, MovieDocument (storage mapping),
+                  FirestoreErrors (recognizes ALREADY_EXISTS)
   common/         error handling (@RestControllerAdvice), Firestore configuration
 src/main/resources/seed/movies.json   sample data (the provided movies-compact.json)
 src/test/java/                     unit tests (*Test)
@@ -58,7 +60,7 @@ docs/  api.md, deployment.md, firestore-model.md, adr/, ai-log/
 
 Rules:
 - Controllers contain no business logic; they map HTTP <-> DTO and delegate to the service.
-- Firestore types (`DocumentSnapshot`, `Timestamp`, ...) never leave the `persistence` package. The API exposes DTO `record`s only.
+- Firestore types (`DocumentSnapshot`, `Timestamp`, ...) never leave the `persistence` package (the one exception is `common/FirestoreConfig`, which builds the client). The API exposes DTO `record`s only.
 - Constructor injection only; no field `@Autowired`. Prefer immutable objects.
 - No new dependency without asking the user first (record the reason in an ADR).
 - Never disable or loosen a quality gate to get a green build.
@@ -170,7 +172,7 @@ Rules:
 - `README.md`: what it is, prerequisites (Java 21), how to run the unit tests and the Postman collection, link to the deployed Swagger UI, link to the deployment doc.
 - `docs/api.md`: human-readable contract with request/response examples (curl).
 - `docs/firestore-model.md`: collection layout and document fields. `docs/api.md` also documents the search semantics.
-- `docs/adr/NNNN-title.md`: one short ADR per significant decision. ADR-0001 to ADR-0007 exist as drafts; update them instead of duplicating.
+- `docs/adr/NNNN-title.md`: one short ADR per significant decision. ADR-0001 to ADR-0010 exist (index in `docs/adr/README.md`); update or supersede them instead of duplicating.
 - `docs/ai-log/NN-slice-name.md`: record of each AI-assisted slice: key prompts, plan, what was changed or rejected.
 
 ## How to work (agents and humans)
