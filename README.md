@@ -48,8 +48,9 @@ Setup, flags, the first-deploy seed check, verification, rollback and costs: [do
 ## Run the API tests
 The Postman collection in `postman/` tests the **deployed** service; it is run by hand and is not part of `check`. With Newman:
 ```
-npx newman run postman/movie-api.postman_collection.json -e postman/movie-api.postman_environment.json --env-var baseUrl=https://<your-service-url>
+npx newman run postman/movie-api.postman_collection.json -e postman/movie-api.postman_environment.json
 ```
+The environment already points at the live service; add `--env-var baseUrl=https://<other-service-url>` to test another deployment.
 Ask first: each run adds one movie named `0 Pmtest <runId>` to the real database, and there is no delete endpoint, so leftovers are removed by hand in the Firestore console. Setup and what is checked: [postman/README.md](postman/README.md).
 
 ## More

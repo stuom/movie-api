@@ -454,7 +454,7 @@ the count is reported, not each entry.
 A field that is not part of the movie gives `{"field": "synopsys", "message": "is not a known field"}`,
 and a number too large for an integer gives `{"field": "year", "message": "is out of range"}`.
 When no single field is to blame (the body is missing, is not valid JSON, is not an object, repeats
-a key, or has content after the object), `violations` is omitted.
+a key, has content after the object, or has a number longer than 1000 digits), `violations` is omitted.
 
 ### `409`: duplicate
 After `Aliens` (1986) was added, posting `"name": "aliens"` with `"year": 1986`:

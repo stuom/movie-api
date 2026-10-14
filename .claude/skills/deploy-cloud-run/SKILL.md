@@ -71,7 +71,7 @@ Quotas and prices change: tell the user to check the Cloud Run and Firestore pri
 
 ## Verify after each deploy (Postman)
 Use the service URL printed by gcloud (or `gcloud run services describe movie-api --region europe-north1 --project movie-api-511411 --format 'value(status.url)'`).
-1. Import `postman/movie-api.postman_collection.json` and `postman/movie-api.postman_environment.json` into Postman and set the environment variable `baseUrl` to the service URL (no trailing slash).
+1. Import `postman/movie-api.postman_collection.json` and `postman/movie-api.postman_environment.json` into Postman and check that the environment variable `baseUrl` is the service URL (no trailing slash; the committed environment already holds the live URL).
 2. Run the whole collection with the Collection Runner. It adds one test movie, lists movies and searches with one field at a time (see `postman/README.md`). All tests should pass.
 3. Open `URL/swagger-ui.html` once to check the generated documentation.
 Each run adds one test movie to the real database (name starts with `0 Pmtest`); remove leftovers by hand in the Firestore console now and then.

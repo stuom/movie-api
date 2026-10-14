@@ -57,6 +57,13 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
   private static final String UNEXPECTED_ERROR = "An unexpected error occurred.";
   private static final String BODY_TOO_LARGE =
       "The request body is too large; a movie fits in " + JacksonConfig.MAX_BODY_KILOBYTES + " KB.";
+
+  /** Named in Jackson's message when {@code StreamReadConstraints.maxDocumentLength} trips. */
+  private static final String DOCUMENT_LENGTH_LIMIT = "getMaxDocumentLength";
+
+  /** Jackson nests the limit error one or two levels deep; this leaves ample room. */
+  private static final int MAX_CAUSE_DEPTH = 10;
+
   private static final String NO_ENDPOINT = "There is no endpoint at this path.";
   private static final String NO_MOVIE = "There is no movie with this id.";
   private static final String INVALID_QUERY = "The query parameters are invalid; see violations.";
@@ -131,7 +138,7 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
       HttpHeaders headers,
       HttpStatusCode status,
       WebRequest request) {
-    if (exception.getCause() instanceof StreamConstraintsException) {
+    if (isBodyTooLarge(exception)) {
       HttpStatus tooLarge = HttpStatus.PAYLOAD_TOO_LARGE;
       ProblemDetail problem = ProblemDetail.forStatusAndDetail(tooLarge, BODY_TOO_LARGE);
       return handleExceptionInternal(exception, problem, headers, tooLarge, request);
@@ -161,6 +168,32 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     return violations.stream()
         .map(violation -> new ProblemViolation(violation.field(), violation.message()))
         .toList();
+  }
+
+  /**
+   * Whether Jackson stopped because the body passed the size limit. The whole cause chain is
+   * searched because Jackson wraps the limit error in a {@link JsonMappingException} when it trips
+   * inside a field, which is where it trips for any body well over the limit. Jackson's other
+   * stream limits (number length, nesting depth, name length) use the same exception type and can
+   * trip in a small body, so they stay {@code 400}; Jackson 2 tells them apart only by the message,
+   * which {@code MovieControllerTest} pins for both cases. The search stops after {@link
+   * #MAX_CAUSE_DEPTH} causes, so a cyclic chain cannot hold a request thread forever.
+   */
+  private static boolean isBodyTooLarge(Throwable exception) {
+    Throwable cause = exception.getCause();
+    for (int depth = 0; cause != null && depth < MAX_CAUSE_DEPTH; depth++) {
+      if (cause instanceof StreamConstraintsException limit) {
+        return isDocumentLengthLimit(limit);
+      }
+      cause = cause.getCause();
+    }
+    return false;
+  }
+
+  /** Jackson 2 has no subtype per limit, so the message is the only way to tell them apart. */
+  private static boolean isDocumentLengthLimit(StreamConstraintsException limit) {
+    String message = limit.getMessage();
+    return message != null && message.contains(DOCUMENT_LENGTH_LIMIT);
   }
 
   private static String problemWith(JsonMappingException mapping) {

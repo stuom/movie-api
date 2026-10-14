@@ -34,7 +34,9 @@ import com.pehmo.movieapi.movie.service.MovieService;
 import com.pehmo.movieapi.movie.service.MovieStorageException;
 import com.pehmo.movieapi.movie.service.MovieTestData;
 import com.pehmo.movieapi.movie.service.NewMovie;
+import java.math.BigInteger;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -668,7 +670,7 @@ class MovieControllerTest {
 
     @Test
     void shouldReturn413WhenBodyExceedsTheSizeLimit() throws Exception {
-      // given a body just over 256 KB, made large by a synopsis that the size limit stops first
+      // given a body just over 256 KB, so the limit trips only after the last field is read
       Map<String, Object> body = aValidBody();
       body.put("synopsis", "a".repeat(256 * 1024));
 
@@ -676,6 +678,50 @@ class MovieControllerTest {
       ResultActions result = postJson(body);
 
       // then
+      assertTooLargeAndServiceNotCalled(result);
+    }
+
+    @Test
+    void shouldReturn413WhenSizeLimitTripsInsideTheSynopsis() throws Exception {
+      // given the body the Postman test sends: well over 256 KB, so the limit trips mid-field
+      Map<String, Object> body = aValidBody();
+      body.put("synopsis", "a".repeat(300_000));
+
+      // when
+      ResultActions result = postJson(body);
+
+      // then
+      assertTooLargeAndServiceNotCalled(result);
+    }
+
+    @Test
+    void shouldReturn413WhenSizeLimitTripsInsideTheGenres() throws Exception {
+      // given a body over 256 KB made of many short genres, so the limit trips in an array element
+      Map<String, Object> body = aValidBody();
+      body.put("genres", Collections.nCopies(40_000, "Drama"));
+
+      // when
+      ResultActions result = postJson(body);
+
+      // then
+      assertTooLargeAndServiceNotCalled(result);
+    }
+
+    @Test
+    void shouldReturn400NotTooLargeWhenNumberHasTooManyDigits() throws Exception {
+      // given a small body whose year breaks Jackson's number-length limit, not the size limit
+      Map<String, Object> body = aValidBody();
+      body.put("year", new BigInteger("9".repeat(1001)));
+
+      // when
+      ResultActions result = postJson(body);
+
+      // then no violations: the limit error is not tied to a field, unlike an int overflow
+      assertUnreadableAndServiceNotCalled(result);
+      result.andExpect(jsonPath("$.violations").doesNotExist());
+    }
+
+    private void assertTooLargeAndServiceNotCalled(ResultActions result) throws Exception {
       expectProblem(
           result,
           HttpStatus.PAYLOAD_TOO_LARGE,

@@ -19,15 +19,16 @@ test is [`docs/api.md`](../docs/api.md). They are not part of `./gradlew check`.
    gcloud run services describe movie-api --region europe-north1 --project movie-api-511411 --format 'value(status.url)'
    ```
 2. In Postman, **Import** both JSON files.
-3. Select the environment `Movie API (Cloud Run)` and set `baseUrl` to the URL from step 1, replacing
-   `https://REPLACE-WITH-CLOUD-RUN-URL`. No trailing slash.
+3. Select the environment `Movie API (Cloud Run)`. Its `baseUrl` is already the live service,
+   `https://movie-api-719585522889.europe-north1.run.app`; change it only if step 1 prints another URL. No trailing slash.
 
 ## Run
 Run the whole collection, in order, with the **Collection Runner** (later requests use variables set
 by earlier ones). Or from the repository root:
 ```bash
-npx newman run postman/movie-api.postman_collection.json -e postman/movie-api.postman_environment.json --env-var baseUrl=https://<your-service-url>
+npx newman run postman/movie-api.postman_collection.json -e postman/movie-api.postman_environment.json
 ```
+Add `--env-var baseUrl=https://<other-service-url>` to run against another deployment.
 No request asserts response times: a Cloud Run cold start can take several seconds.
 
 ## What each folder checks

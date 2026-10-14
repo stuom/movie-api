@@ -10,10 +10,10 @@ First read AGENTS.md (API conventions and search rules), `docs/api.md` (if it ex
 ## Scope
 Only create or edit files under `postman/`:
 - `postman/movie-api.postman_collection.json` (Postman Collection v2.1: `info.schema` is `https://schema.getpostman.com/json/collection/v2.1.0/collection.json`; requests are `item` entries with `request` and an `event` of `listen: "test"`; scripts are arrays of lines in `script.exec`).
-- `postman/movie-api.postman_environment.json` with the variable `baseUrl` set to the placeholder `https://REPLACE-WITH-CLOUD-RUN-URL` (no trailing slash).
+- `postman/movie-api.postman_environment.json` with the variable `baseUrl` set to the live service URL `https://movie-api-719585522889.europe-north1.run.app` (no trailing slash; keep it, do not reset it to a placeholder).
 - `postman/README.md`: how to import both files, how to get the URL (`gcloud run services describe movie-api --region europe-north1 --project movie-api-511411 --format 'value(status.url)'`), how to run the whole collection with the Collection Runner (or `npx newman run postman/movie-api.postman_collection.json -e postman/movie-api.postman_environment.json`), what each folder checks, and the data warning below.
 
-Never edit `src/`. Do not call the deployed service yourself unless the user gives you the URL and says yes, because every run adds a movie to the real database. You may check that the JSON parses (`python3 -m json.tool`) and, if Node.js is available, syntax-check the scripts.
+Never edit `src/`. Do not call the deployed service yourself unless the user says yes, because every run adds a movie to the real database. The environment file already holds the live URL, so that yes is the only guard. You may check that the JSON parses (`python3 -m json.tool`) and, if Node.js is available, syntax-check the scripts.
 
 ## Folders (they run in this order; later ones use variables set earlier)
 1. **01 Add movie**
@@ -60,4 +60,4 @@ Do not depend on the seeded movies, their number or their content: other data ma
 - Name requests `METHOD what - expected result`, for example `GET search viewerAge=17 - excludes fixture`. Give each folder a short description.
 
 ## Finish
-Run the JSON parse check, then reply with: the folders and the number of requests and assertions, which contract rules each folder verifies, anything in the contract that could not be tested or looked inconsistent, and how to run the collection, including the reminders to set `baseUrl` and that **each run adds one movie named `0 Pmtest <runId>` to the real database**. There is no delete endpoint, so leftovers are removed by hand in the Firestore console.
+Run the JSON parse check, then reply with: the folders and the number of requests and assertions, which contract rules each folder verifies, anything in the contract that could not be tested or looked inconsistent, and how to run the collection, including the reminder that **each run adds one movie named `0 Pmtest <runId>` to the real database**. There is no delete endpoint, so leftovers are removed by hand in the Firestore console.
