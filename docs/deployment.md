@@ -24,7 +24,7 @@ Change settings in these files, not in ad-hoc commands.
 - **Google Cloud CLI** (`gcloud`), logged in with `gcloud auth login` as an account that can administer `movie-api-511411`.
 - **Java 21 JDK**, as for the build ([README](../README.md#prerequisites)): the deploy runs `./gradlew check` locally first.
 - **Billing** linked to the project. Check with `gcloud billing projects describe movie-api-511411`.
-- **A budget alert** created in the Billing console before the first deploy. It is the safety net if a free quota is exceeded.
+- **A budget alert** created in the Billing console before the first deploy. It is the safety net if a free quota is exceeded. (On this project it is still pending, as of 2026-10-14.)
 
 Your local gcloud default project may be a different one. Every command in this document therefore passes
 `--project movie-api-511411`; keep it when you copy them.
@@ -57,6 +57,7 @@ can **never** be changed afterwards.
    gcloud builds get-default-service-account --project movie-api-511411
    gcloud projects add-iam-policy-binding movie-api-511411 --member="serviceAccount:<build account from the previous command>" --role="roles/run.builder" --condition=None
    ```
+   **What happened on this project (2026-10-14):** `gcloud builds get-default-service-account` returned the Compute Engine default account, which already had `roles/editor`, so this grant was skipped and the first deploy worked without it. Granting `run.builder` stays the least-privilege recommendation for a fresh project.
 5. **Wait a few minutes.** New IAM bindings take time to take effect. A deploy straight after step 3 can fail
    startup with `PERMISSION_DENIED`, because the first catalog load fails and that fails startup (ADR-0013).
    If that happens, wait and redeploy.

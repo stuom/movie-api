@@ -20,18 +20,46 @@ import org.springframework.stereotype.Component;
 @Component
 public final class MovieRules {
 
+  /** Longest movie name, as {@code String.length()} (UTF-16 code units) after trimming. */
   public static final int MAX_NAME_LENGTH = 200;
+
+  /** Earliest release year accepted: the year of the first film. */
   public static final int FIRST_FILM_YEAR = 1888;
+
+  /** How many years beyond the current year a release year may be, for announced films. */
   public static final int YEARS_AHEAD_ALLOWED = 5;
+
+  /** Fewest genres a movie must have. */
   public static final int MIN_GENRES = 1;
+
+  /** Most genres a movie may have. */
   public static final int MAX_GENRES = 5;
+
+  /** Longest single genre, as {@code String.length()} (UTF-16 code units) after trimming. */
   public static final int MAX_GENRE_LENGTH = 50;
+
+  /** Lowest age limit: suitable for every age. */
   public static final int MIN_AGE_LIMIT = 0;
+
+  /** Highest age limit, in years. */
   public static final int MAX_AGE_LIMIT = 18;
+
+  /** Lowest rating, in stars. */
   public static final int MIN_RATING = 1;
+
+  /** Highest rating, in stars. */
   public static final int MAX_RATING = 5;
+
+  /**
+   * Longest first or last name of a person, as {@code String.length()} (UTF-16 code units) after
+   * trimming.
+   */
   public static final int MAX_PERSON_NAME_LENGTH = 100;
+
+  /** Most actors a movie may list. */
   public static final int MAX_ACTORS = 30;
+
+  /** Longest synopsis, as {@code String.length()} (UTF-16 code units) after trimming. */
   public static final int MAX_SYNOPSIS_LENGTH = 2000;
 
   /** The one wording for an absent value, whether null or blank. */

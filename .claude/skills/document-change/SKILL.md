@@ -25,12 +25,14 @@ Every public class and method. Explain intent, rules, thrown exceptions, and why
 Write an ADR when the decision is hard to reverse or someone might ask "why did you do it this way?":
 framework or library choices, database strategy, API shape, error format, deployment approach.
 Copy `templates/adr-template.md` to `docs/adr/NNNN-short-title.md` (next free number), keep it to one page, and set a status.
-ADR-0001 to ADR-0013 already exist (index in `docs/adr/README.md`) in `docs/adr/`: keep them accurate, and supersede rather than silently rewrite them when a decision changes. Also keep `docs/firestore-model.md` and the search semantics in `docs/api.md` in sync with the code.
+The existing ADRs are listed in the index `docs/adr/README.md`; keep them accurate, and supersede rather than silently rewrite them when a decision changes. Also keep `docs/firestore-model.md` and the search semantics in `docs/api.md` in sync with the code.
 
 ## 5. AI log (`docs/ai-log/NN-slice-name.md`)
 Copy `templates/ai-log-entry.md`. Record: the goal, the key prompts (verbatim, shortened if very long), the plan the agent proposed,
 which subagents and skills were used and what they found, what the human changed or rejected and why, and the outcome (test and gate results).
+Quotes come from the prompt log `slice-log/prompts.md`, which is local, git-ignored hook output outside the repository, so say so once in the first entry that uses it.
 Be honest about mistakes and corrections, because they show the review process working.
+Every follow-up commit of a slice (Postman requests, cleanup, deploy records, doc fixes) gets its own entry or an addendum to the slice's entry, so no commit is left without its prompts and decisions.
 
 ## 6. Verify
 Run `./gradlew check` to confirm docs-related changes (Javadoc, annotations) did not break the build, and check that relative links in the docs resolve.

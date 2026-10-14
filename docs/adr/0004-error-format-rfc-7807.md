@@ -35,3 +35,6 @@ All errors are returned as `ProblemDetail` by one `@RestControllerAdvice`: `400`
 - The error shape is documented in `docs/api.md` and, as examples, in the OpenAPI annotations (ADR-0011).
 - The catch-all `@ExceptionHandler(Exception.class)` runs before Spring resolves `@ResponseStatus` on exceptions. Every new exception that should not become a `500` (for example the future `MovieNotFoundException`) therefore needs its own handler method.
 - Requests that Tomcat rejects before they reach Spring MVC (for example a malformed request line) still get Spring Boot's default `/error` JSON, not a problem detail.
+
+## Update 2026-10-14 (documentation audit)
+The "future `MovieNotFoundException`" in the consequences exists since slice 07: `ApiExceptionHandler.handleMovieNotFound` answers `404` with the detail "There is no movie with this id." and does not repeat the id. The handlers for `InvalidQueryException` and `MovieNotFoundException` (`handleInvalidQuery`, `handleMovieNotFound`) were added in slice 07.

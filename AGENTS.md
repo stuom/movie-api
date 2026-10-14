@@ -38,6 +38,7 @@ Search logic lives in the service layer as plain Java, so it is fully unit-testa
 build.gradle.kts, settings.gradle.kts, gradle.properties   build and deployment settings
 gradlew, gradlew.bat, gradle/wrapper/                      Gradle wrapper (pinned version and checksum)
 config/checkstyle/                                         Checkstyle rules and test suppressions (layout is left to google-java-format)
+config/artifact-registry-cleanup-policy.json               keeps the two most recent container images (docs/deployment.md)
 Dockerfile, .dockerignore, .gcloudignore                   container build for Cloud Run
 src/main/java/com/pehmo/movieapi/
   MovieApiApplication.java
@@ -181,7 +182,7 @@ Rules:
 - `README.md`: what it is, prerequisites (Java 21), how to run the unit tests and the Postman collection, link to the deployed Swagger UI, link to the deployment doc.
 - `docs/api.md`: human-readable contract with request/response examples (curl).
 - `docs/firestore-model.md`: collection layout and document fields. `docs/api.md` also documents the search semantics.
-- `docs/adr/NNNN-title.md`: one short ADR per significant decision. ADR-0001 to ADR-0013 exist (index in `docs/adr/README.md`); update or supersede them instead of duplicating.
+- `docs/adr/NNNN-title.md`: one short ADR per significant decision. The index in `docs/adr/README.md` lists every ADR; update or supersede existing ones instead of duplicating.
 - `docs/ai-log/NN-slice-name.md`: record of each AI-assisted slice: key prompts, plan, what was changed or rejected.
 
 ## How to work (agents and humans)

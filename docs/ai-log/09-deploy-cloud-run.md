@@ -71,6 +71,7 @@ code-reviewer (on the diff, run in parallel with the documentation):
 - **Postman run** (user's yes): Newman 6.2.3 against the live URL ran 69 requests with 448 assertions and 0 failures, in 7.9 s. It added the test movie `0 Pmtest mv7nior7` (id `3721ad8a204fa033b0588d2f970babe2`); remove it by hand in the Firestore console.
 - **Still pending:** the budget alert (Billing console, by the user).
 - Commit: see git log (`feat(deploy): one-command deployment to Cloud Run in europe-north1`).
+- Follow-up commits: `ed7c2a1` (live URL in README and deployment doc), `a4b260b` (the Postman run recorded in this entry), `a8b266a` (Artifact Registry cleanup policy, see [AI log 10](10-postman-and-cleanup.md)).
 
 ## Lessons
 - Backslash escapes inside Bash heredocs got mangled in this environment. Scripts that contain escapes go into files in the scratchpad and are run from there.

@@ -30,3 +30,6 @@ Details settled when listing was built (2026-10-14):
 - Fixed sort order; a `sort` parameter can be added later because sorting is in memory.
 - Clients and tools that append their own parameters, such as cache-busters (`_=...`) or `utm_*` tracking tags, get a `400` and must not add them. Each new parameter (the search fields) has to be added to the known set in `MovieQuery`.
 - If movies grow large, introduce a summary type for list items and supersede this ADR.
+
+## Update 2026-10-14 (documentation audit)
+The search parameters are no longer added to a known set in `MovieQuery` by hand. `MovieSearchCriteriaParser.FIELDS` is the single list of search fields; `MovieSearchCriteria.PARAMETERS` is derived from it, and `MovieQuery` adds `page` and `size` to that to get the known parameters (slice 08).

@@ -4,6 +4,9 @@ REST service to list, search and add movies. This document is the human-readable
 machine-readable one is the OpenAPI description served by the deployed service at `/v3/api-docs`
 (Swagger UI at `/swagger-ui.html`).
 
+In the examples, `$BASE_URL` is the service URL without a trailing slash, for example
+`BASE_URL=https://movie-api-719585522889.europe-north1.run.app` (see [docs/deployment.md](deployment.md)).
+
 | Endpoint | Purpose | Status |
 |---|---|---|
 | `POST /api/v1/movies` | Add a movie | Available |
@@ -391,12 +394,31 @@ and these members:
 
 Stack traces, exception names and storage details are never returned.
 
-Spring's own errors use the same format, for example `404 Not Found` for an unknown path (`detail`
-`"There is no endpoint at this path."`), `405 Method Not Allowed` for an unsupported method (such as
-`DELETE /api/v1/movies`) and `406 Not Acceptable` when the `Accept` header excludes
-JSON.
+Spring's own errors use the same format: `404 Not Found` for an unknown path (`detail`
+`"There is no endpoint at this path."`), and `405`, `406` and `415`, see
+[below](#405-406-and-415-requests-spring-rejects).
 Only requests that the web server rejects before they reach the application (for example a
 malformed HTTP request line) get Spring Boot's default error JSON instead.
+
+### `405`, `406` and `415`: requests Spring rejects
+These come from Spring MVC, not from this application's code. They keep the problem shape above, but
+the `detail` wording is Spring's own and is not part of the contract. Each is pinned by a controller test.
+
+| Status | When | Example |
+|---|---|---|
+| `405 Method Not Allowed` | A method the path does not support. | `curl -i -X DELETE "$BASE_URL/api/v1/movies"` |
+| `406 Not Acceptable` | The `Accept` header excludes JSON. | `curl -i -X POST "$BASE_URL/api/v1/movies" -H "Content-Type: application/json" -H "Accept: text/plain" -d '{}'` |
+| `415 Unsupported Media Type` | `POST` with a `Content-Type` other than `application/json`. | `curl -i -X POST "$BASE_URL/api/v1/movies" -H "Content-Type: text/plain" -d 'x'` |
+
+```json
+{
+  "type": "about:blank",
+  "title": "Method Not Allowed",
+  "status": 405,
+  "detail": "<Spring's description of the problem>",
+  "instance": "/api/v1/movies"
+}
+```
 
 ### `400`: rules broken
 Every broken rule is reported, in field order. The `detail` counts them ("breaks 1 rule", "breaks 3 rules"). When `genres` or `actors` have too many entries, only

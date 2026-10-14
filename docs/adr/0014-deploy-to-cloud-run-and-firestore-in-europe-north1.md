@@ -39,3 +39,7 @@ Exact commands and the meaning of every flag: `docs/deployment.md`.
 - Scale to zero costs nothing when idle but gives cold starts of several seconds; one instance limits throughput and keeps one catalog (ADR-0007, ADR-0013).
 - The first deploy seeds the sample data once and permanently (ADR-0006); seeding must be checked in the logs straight after the first deploy.
 - To change course: add a CI pipeline that calls the same task, raise `min-instances` (costs money), or revisit the storage/search approach above about 500 movies (ADR-0013).
+
+## Update 2026-10-14 (after the first deploy)
+- **Artifact Registry cleanup policy applied.** The recommendation in the consequences above was carried out: `config/artifact-registry-cleanup-policy.json` keeps the 2 most recent images in `cloud-run-source-deploy` (the serving revision and one to roll back to) and deletes older ones. The command and the rollback limit are in `docs/deployment.md`.
+- **`roles/run.builder` was not needed on this project.** The decision above keeps the least-privilege grant as the recommendation for a fresh project. In this project `gcloud builds get-default-service-account` returned the Compute Engine default account, which already had `roles/editor`, so the grant was skipped and the first deploy (revision `movie-api-00001-w9p`) succeeded without it.

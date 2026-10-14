@@ -31,3 +31,7 @@ A new movie reaches the service from two places: the `POST /api/v1/movies` body 
 - The error mapping to `ProblemDetail` is our own code instead of Spring's built-in handling of `MethodArgumentNotValidException`.
 - Bean Validation may never be needed for the movie body; it may still be used for query parameters, or dropped entirely (decide when the controller slice is planned).
 - A rule change applies only to new movies. Existing data that breaks a new rule has to be found and fixed by hand.
+
+## Update 2026-10-14 (documentation audit, slices 07 and 08)
+- The wording above that looks ahead has come true: `NewMovieRequest` carries no Bean Validation constraints, `InvalidMovieException` becomes a `400` through `ApiExceptionHandler`, and `common/ClockConfig` provides `Clock.systemUTC()`.
+- The open question about Bean Validation for query parameters was decided in slices 07 and 08: query parameters are parsed in plain Java (`MovieQuery`, `MovieSearchCriteriaParser`, `QueryParameterValues`), so every problem is reported at once with the parameter name as `field`. Bean Validation is not used anywhere in the project (see AGENTS.md).

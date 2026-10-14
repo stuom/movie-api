@@ -12,3 +12,6 @@ bin/
 .classpath
 .project
 .settings/
+
+# Prompt and slice logs written by the Claude Code hooks (local notes, not project docs)
+slice-log/
