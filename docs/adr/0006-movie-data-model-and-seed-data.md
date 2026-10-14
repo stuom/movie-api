@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-13
-- **Updated:** 2026-10-13 (all fields are searchable, see ADR-0007; no extra search fields are stored; re-seeding after deleting every movie made explicit); 2026-10-13 (slice 02: frozen normalization and id algorithm, Unicode NFC, edge rules; rules live in `MovieRules`, ADR-0009); 2026-10-13 (slice 05: no control characters in names, genres and person names); 2026-10-14 (slice 06: seed failure policy and partial-seed limitation)
+- **Updated:** 2026-10-13 (all fields are searchable, see ADR-0007; no extra search fields are stored; re-seeding after deleting every movie made explicit); 2026-10-13 (slice 02: frozen normalization and id algorithm, Unicode NFC, edge rules; rules live in `MovieRules`, ADR-0009); 2026-10-13 (slice 05: no control characters in names, genres and person names); 2026-10-14 (slice 06: seed failure policy and partial-seed limitation); 2026-10-14 (slice 09: the sample data is seeded exactly as provided, see the last consequence)
 
 ## Context
 The user provided a sample dataset (`movies-compact.json`, 20 movies) that defines the shape of a movie: `name`, `year`, a list of `genres`, `ageLimit`, `rating`, a `director` (first and last name), a list of `actors` (first and last name) and a `synopsis`. The dataset is also the natural content for a demo deployment. It contains typos and likely wrong values (for example the genre "Familty") and stray whitespace in names.
@@ -37,3 +37,4 @@ The user provided a sample dataset (`movies-compact.json`, 20 movies) that defin
 - Seeding runs after the web server listens, so early requests may see a partly seeded catalog.
 - The control-character rule applies to new movies only: stored movies are not re-validated when the catalog loads (ADR-0009). A stored movie with control characters stays loadable and must be fixed by hand in the Firestore console. The seed file contains none. Normalization and the id algorithm are unchanged.
 - Unicode line and paragraph separators (U+2028, U+2029) and format characters such as bidi overrides (U+202E) or zero-width spaces are not ISO control characters and are still accepted in names; whether to reject them is an open question for the user.
+- **Seed as provided (user decision, slice 09):** the first deploy seeds `movies.json` exactly as provided. The suspected mistakes listed in AI log 06 (for example Avengers: Endgame as 2018, "Downtown Abbey", the genre "Familty") are stored permanently: there is no update or delete endpoint, so they can only be fixed by hand in the Firestore console. Fixing them in the seed file later has no effect on a database that is already seeded. The first-deploy seed check and recovery are in `docs/deployment.md`.

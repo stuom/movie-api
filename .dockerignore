@@ -1,0 +1,20 @@
+# What the Docker build context leaves out; keep identical to .gcloudignore.
+# Only `./gradlew bootJar` runs in the container, so tests, lint config and docs are not needed.
+# .gcloudignore filters the upload first (patterns match at any depth, like .gitignore); .dockerignore
+# patterns are relative to the root, hence **/*.md.
+.git
+.gitignore
+.gradle/
+build/
+out/
+bin/
+.idea/
+*.iml
+.vscode/
+.claude/
+docs/
+**/*.md
+config/
+postman/
+slice-log/
+src/test/

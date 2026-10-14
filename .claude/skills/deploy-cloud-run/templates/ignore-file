@@ -1,13 +1,20 @@
-# Copy this file to both .dockerignore and .gcloudignore.
-# Keeps the upload to Cloud Build small and the image free of local clutter.
+# Copy this file to both .dockerignore and .gcloudignore (what the upload and the image leave out).
+# Only `./gradlew bootJar` runs in the container, so tests, lint config and docs are not needed.
+# .gcloudignore filters the upload first (patterns match at any depth, like .gitignore); .dockerignore
+# patterns are relative to the root, hence **/*.md.
 .git
 .gitignore
 .gradle/
 build/
 out/
+bin/
 .idea/
 *.iml
 .vscode/
 .claude/
 docs/
-*.md
+**/*.md
+config/
+postman/
+slice-log/
+src/test/

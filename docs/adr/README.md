@@ -18,5 +18,6 @@ Add a new ADR instead of rewriting history; mark old ones as superseded.
 | [0011](0011-springdoc-openapi.md) | OpenAPI description and Swagger UI with springdoc-openapi | Accepted |
 | [0012](0012-strict-json-request-bodies.md) | Strict JSON request bodies | Accepted |
 | [0013](0013-catalog-refresh-policy-and-read-budget.md) | Catalog refresh policy and Firestore read budget | Accepted |
+| [0014](0014-deploy-to-cloud-run-and-firestore-in-europe-north1.md) | Deploy to Cloud Run and Firestore in europe-north1 | Accepted |
 
 Template: `.claude/skills/document-change/templates/adr-template.md`

@@ -15,7 +15,7 @@ test is [`docs/api.md`](../docs/api.md). They are not part of `./gradlew check`.
 ## Setup
 1. Get the service URL:
    ```bash
-   gcloud run services describe movie-api --region us-central1 --format 'value(status.url)'
+   gcloud run services describe movie-api --region europe-north1 --project movie-api-511411 --format 'value(status.url)'
    ```
 2. In Postman, **Import** both JSON files.
 3. Select the environment `Movie API (Cloud Run)` and set `baseUrl` to the URL from step 1, replacing

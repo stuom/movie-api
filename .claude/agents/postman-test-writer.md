@@ -11,7 +11,7 @@ First read AGENTS.md (API conventions and search rules), `docs/api.md` (if it ex
 Only create or edit files under `postman/`:
 - `postman/movie-api.postman_collection.json` (Postman Collection v2.1: `info.schema` is `https://schema.getpostman.com/json/collection/v2.1.0/collection.json`; requests are `item` entries with `request` and an `event` of `listen: "test"`; scripts are arrays of lines in `script.exec`).
 - `postman/movie-api.postman_environment.json` with the variable `baseUrl` set to the placeholder `https://REPLACE-WITH-CLOUD-RUN-URL` (no trailing slash).
-- `postman/README.md`: how to import both files, how to get the URL (`gcloud run services describe movie-api --region us-central1 --format 'value(status.url)'`), how to run the whole collection with the Collection Runner (or `npx newman run postman/movie-api.postman_collection.json -e postman/movie-api.postman_environment.json`), what each folder checks, and the data warning below.
+- `postman/README.md`: how to import both files, how to get the URL (`gcloud run services describe movie-api --region europe-north1 --project movie-api-511411 --format 'value(status.url)'`), how to run the whole collection with the Collection Runner (or `npx newman run postman/movie-api.postman_collection.json -e postman/movie-api.postman_environment.json`), what each folder checks, and the data warning below.
 
 Never edit `src/`. Do not call the deployed service yourself unless the user gives you the URL and says yes, because every run adds a movie to the real database. You may check that the JSON parses (`python3 -m json.tool`) and, if Node.js is available, syntax-check the scripts.
 

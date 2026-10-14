@@ -1,17 +1,13 @@
 # syntax=docker/dockerfile:1
 
 # ---- Build stage: compile and package the Spring Boot jar.
-# Tests and linters are not run here; `./gradlew deployCloudRun` runs `check` before uploading.
+# Tests and linters are not run here: `./gradlew deployCloudRun` runs `check` before uploading.
+# No separate dependency layer: Cloud Run source deploys build in a fresh environment and do not reuse
+# Docker layers, so it would only add a step.
 FROM eclipse-temurin:21-jdk AS build
 WORKDIR /workspace
-
-# Copy build definition first so the dependency download layer is cached between deployments.
-COPY gradlew settings.gradle.kts build.gradle.kts gradle.properties ./
-COPY gradle/ gradle/
-RUN chmod +x gradlew && ./gradlew --no-daemon dependencies > /dev/null
-
-COPY src/ src/
-RUN ./gradlew --no-daemon bootJar
+COPY . .
+RUN chmod +x gradlew && ./gradlew --no-daemon bootJar
 
 # ---- Runtime stage: JRE only, non-root user.
 FROM eclipse-temurin:21-jre
@@ -20,7 +16,10 @@ WORKDIR /app
 COPY --from=build /workspace/build/libs/app.jar app.jar
 USER appuser
 
-# Container-aware JVM sizing: use up to 75% of the memory limit, single-threaded GC for a small instance.
-ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -XX:+UseSerialGC"
+# Container-aware JVM sizing. The heap needs little (a few hundred movies), so 60% of the 512Mi limit
+# leaves room for metaspace, thread stacks and the Firestore client's gRPC/Netty buffers. Serial GC
+# suits a single small instance. On OutOfMemoryError the JVM exits, so Cloud Run starts a fresh
+# instance instead of keeping a broken one.
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=60 -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]
