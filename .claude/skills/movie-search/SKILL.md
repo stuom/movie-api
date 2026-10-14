@@ -14,16 +14,16 @@ Because search is plain Java it can be tested exhaustively with fast unit tests,
 - `minYear` + `maxYear` together are **one** field (year); `minRating` + `maxRating` together are **one** field (rating).
 - `page` and `size` are not search fields.
 - Blank text parameters are treated as not provided, so they do not count.
-- Zero fields = list everything. More than one field = `400` (`InvalidQueryException`, the one 400 for every query problem, carrying `FieldViolation`s) whose detail names the fields received, for example "Use only one search field at a time; received: actor, director". Never silently ignore extra fields.
-- Unknown query parameters are rejected (`is not a known parameter`, ADR-0002); each new search parameter is added to `MovieQuery`'s known set.
+- Zero fields = list everything. More than one field = `400` (`InvalidQueryException`, the one 400 for every query problem, carrying `FieldViolation`s) with the fixed detail "The query parameters are invalid; see violations." and one violation per search parameter received, message `must not be combined with another search field; received: <names>` (names in contract-table order, the two bounds of one field joined with ` + `, for example `received: minYear + maxYear, genre`). Repeated or unparsable values still count as received; blank-only values do not. Never silently ignore extra fields.
+- Unknown query parameters are rejected (`is not a known parameter`, ADR-0002); a search parameter becomes known by being listed in `MovieSearchCriteriaParser.FIELDS`.
 
 ## Classes
 - `MovieQuery.parse(Map<String, List<String>>)` is the entry point: it reads the raw parameters, holds a `MoviePageRequest paging`
-  and (from the search slices) a `MovieSearchCriteria criteria`, and reports every violation at once in one `InvalidQueryException`.
+  and a `MovieSearchCriteria criteria`, and reports every violation at once in one `InvalidQueryException`.
 - `MovieSearchCriteria`: a **sealed interface** with one record per field plus `All`, for example `NameContains(text)`, `YearRange(min, max)`, `Genre(text)`, `ViewerAge(age)`, `RatingRange(min, max)`, `DirectorNamed(words)`, `ActorNamed(words)`, `SynopsisContains(words)`.
-  A static factory `MovieSearchCriteria.of(...)`, called from `MovieQuery.parse`, takes the raw search values, normalizes text, enforces the one-field rule and validates ranges. The sealed type means `MovieSearch` uses an exhaustive `switch` (Java 21 pattern matching), so adding a filter fails to compile until it is handled.
-- `MovieSearch`: `search(List<Movie>, MovieSearchCriteria, MoviePageRequest)` returns a `MoviePage` (today `pageOf(movies, paging)`, renamed when matching is added). One small, named, testable method per filter.
-- `MovieService.searchMovies(MovieQuery)` (today `listMovies(query)`; rename it, do not add an overload) takes the snapshot from `MovieCatalog` and calls `MovieSearch`.
+  A static factory `MovieSearchCriteria.of(...)`, called from `MovieQuery.parse`, takes the raw search values, normalizes text, enforces the one-field rule and validates ranges. `of` delegates to the package-private `MovieSearchCriteriaParser.collect(parameters, violations)`, which `MovieQuery.parse` calls directly so all violations are reported together. `MovieSearchCriteriaParser.FIELDS` (fields in table order, each with its parameters) is the single list to extend when adding a filter; `MovieSearchCriteria.PARAMETERS` is derived from it. The sealed type means `MovieSearch` uses an exhaustive `switch` (Java 21 pattern matching), so adding a filter fails to compile until it is handled.
+- `MovieSearch`: `search(List<Movie>, MovieSearchCriteria, MoviePageRequest)` returns a `MoviePage`. One small, named, testable method per filter.
+- `MovieService.searchMovies(MovieQuery)` takes the snapshot from `MovieCatalog` and calls `MovieSearch`.
 - The controller passes the raw `MultiValueMap` to `MovieQuery.parse` and maps the `MoviePage` to `MoviePageResponse`. No matching logic in the controller.
 
 ## Semantics (the contract; keep AGENTS.md, ADR-0007 and `docs/api.md` identical to this)
@@ -46,7 +46,7 @@ Because search is plain Java it can be tested exhaustively with fast unit tests,
 
 ## Adding or changing a search field
 1. Update the semantics table here, in AGENTS.md (API conventions), in `docs/api.md` and in ADR-0007 (or a new ADR if the behavior is a decision).
-2. Add a record to `MovieSearchCriteria`, extend `MovieSearchCriteria.of(...)` (including the one-field rule and validation), add its method and `switch` case in `MovieSearch`, and add the request parameter and OpenAPI annotation in the controller.
+2. Add a record to `MovieSearchCriteria`, add a parameter-name constant, list it in `MovieSearchCriteriaParser.FIELDS` and read and validate it in `collect`, add its method and `switch` case in `MovieSearch`, and add the request parameter and OpenAPI annotation in the controller.
 3. Write the tests below before the implementation (see the `write-tests` skill).
 4. Do not touch Firestore: no new queries, indexes or stored fields are needed.
 

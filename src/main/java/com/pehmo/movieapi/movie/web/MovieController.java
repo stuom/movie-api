@@ -3,6 +3,7 @@ package com.pehmo.movieapi.movie.web;
 import com.pehmo.movieapi.movie.service.Movie;
 import com.pehmo.movieapi.movie.service.MoviePage;
 import com.pehmo.movieapi.movie.service.MovieQuery;
+import com.pehmo.movieapi.movie.service.MovieSearchCriteria;
 import com.pehmo.movieapi.movie.service.MovieService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -185,18 +186,79 @@ public class MovieController {
   }
 
   /**
-   * Lists the catalog one page at a time. All parameters arrive as one raw map, so {@code
-   * MovieQuery} can reject unknown and repeated ones and report every problem at once; the
-   * documented parameters are therefore declared on the operation.
+   * Lists or searches the catalog one page at a time. All parameters arrive as one raw map, so
+   * {@code MovieQuery} can reject unknown and repeated ones, enforce the one-field rule and report
+   * every problem at once; the documented parameters are therefore declared on the operation.
    */
   @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
   @Operation(
-      summary = "List movies",
+      summary = "List or search movies",
       description =
-          "Returns the whole catalog a page at a time, sorted by name ignoring case and then by"
-              + " id. Out-of-range values are rejected, not clamped, and so are unknown"
+          "Returns the movies a page at a time, sorted by name ignoring case and then by id. Use at"
+              + " most one search field per request; with none, the whole catalog is listed."
+              + " minYear and maxYear together are one field (year), and so are minRating and"
+              + " maxRating (rating). Sending two or more search fields is a 400 naming them."
+              + " Text is matched ignoring case, accents are not folded, and a blank value counts"
+              + " as not given. Out-of-range values are rejected, not clamped, and so are unknown"
               + " parameters. A page past the end is empty and keeps the true totals.",
       parameters = {
+        @Parameter(
+            name = MovieSearchCriteria.NAME,
+            in = ParameterIn.QUERY,
+            description = "The movie name contains this text.",
+            schema = @Schema(type = "string"),
+            example = "alien"),
+        @Parameter(
+            name = MovieSearchCriteria.MIN_YEAR,
+            in = ParameterIn.QUERY,
+            description = "Released in this year or later. Must not be above maxYear.",
+            schema = @Schema(type = "integer")),
+        @Parameter(
+            name = MovieSearchCriteria.MAX_YEAR,
+            in = ParameterIn.QUERY,
+            description =
+                "Released in this year or earlier. Set minYear and maxYear equal for one year.",
+            schema = @Schema(type = "integer")),
+        @Parameter(
+            name = MovieSearchCriteria.GENRE,
+            in = ParameterIn.QUERY,
+            description = "One of the movie's genres equals this text.",
+            schema = @Schema(type = "string"),
+            example = "sci-fi"),
+        @Parameter(
+            name = MovieSearchCriteria.VIEWER_AGE,
+            in = ParameterIn.QUERY,
+            description = "Movies a viewer of this age may watch: ageLimit at most viewerAge.",
+            schema = @Schema(type = "integer", minimum = "0", maximum = "120")),
+        @Parameter(
+            name = MovieSearchCriteria.MIN_RATING,
+            in = ParameterIn.QUERY,
+            description = "Rated this many stars or more. Must not be above maxRating.",
+            schema = @Schema(type = "integer", minimum = "1", maximum = "5")),
+        @Parameter(
+            name = MovieSearchCriteria.MAX_RATING,
+            in = ParameterIn.QUERY,
+            description = "Rated this many stars or fewer.",
+            schema = @Schema(type = "integer", minimum = "1", maximum = "5")),
+        @Parameter(
+            name = MovieSearchCriteria.DIRECTOR,
+            in = ParameterIn.QUERY,
+            description = "Every word is contained in the director's first name or last name.",
+            schema = @Schema(type = "string"),
+            example = "spielberg"),
+        @Parameter(
+            name = MovieSearchCriteria.ACTOR,
+            in = ParameterIn.QUERY,
+            description =
+                "Every word is contained in the first name or last name of the same actor.",
+            schema = @Schema(type = "string"),
+            example = "harrison ford"),
+        @Parameter(
+            name = MovieSearchCriteria.SYNOPSIS,
+            in = ParameterIn.QUERY,
+            description = "Every word is contained in the synopsis, in any order.",
+            schema = @Schema(type = "string"),
+            example = "missing father"),
         @Parameter(
             name = "page",
             in = ParameterIn.QUERY,
@@ -208,25 +270,41 @@ public class MovieController {
             description = "Movies per page.",
             schema = @Schema(type = "integer", minimum = "1", maximum = "100", defaultValue = "20"))
       })
-  @ApiResponse(responseCode = "200", description = "The requested page.")
+  @ApiResponse(responseCode = "200", description = "The requested page of matching movies.")
   @ApiResponse(
       responseCode = "400",
       description =
-          "A parameter is out of range, not a whole number, given more than once, or unknown.",
+          "More than one search field, a parameter out of range, a lower bound above its upper"
+              + " bound, not a whole number, given more than once, or unknown.",
       content =
           @Content(
               mediaType = PROBLEM_JSON,
               schema = @Schema(implementation = ProblemDetail.class),
-              examples =
-                  @ExampleObject(
-                      value =
-                          """
-                          {"type": "about:blank", "title": "Bad Request", "status": 400,
-                           "detail": "The query parameters are invalid; see violations.",
-                           "instance": "/api/v1/movies",
-                           "violations": [{"field": "size", "message": "must be between 1 and 100"},
-                                          {"field": "pgae", "message": "is not a known parameter"}]}
-                          """)))
+              examples = {
+                @ExampleObject(
+                    name = "invalid parameters",
+                    value =
+                        """
+                        {"type": "about:blank", "title": "Bad Request", "status": 400,
+                         "detail": "The query parameters are invalid; see violations.",
+                         "instance": "/api/v1/movies",
+                         "violations": [{"field": "size", "message": "must be between 1 and 100"},
+                                        {"field": "pgae", "message": "is not a known parameter"}]}
+                        """),
+                @ExampleObject(
+                    name = "more than one search field",
+                    value =
+                        """
+                        {"type": "about:blank", "title": "Bad Request", "status": 400,
+                         "detail": "The query parameters are invalid; see violations.",
+                         "instance": "/api/v1/movies",
+                         "violations": [
+                           {"field": "director",
+                            "message": "must not be combined with another search field; received: director, actor"},
+                           {"field": "actor",
+                            "message": "must not be combined with another search field; received: director, actor"}]}
+                        """)
+              }))
   @ApiResponse(
       responseCode = "500",
       description = "An unexpected error occurred.",
@@ -236,7 +314,7 @@ public class MovieController {
               schema = @Schema(implementation = ProblemDetail.class)))
   public MoviePageResponse listMovies(
       @Parameter(hidden = true) @RequestParam MultiValueMap<String, String> parameters) {
-    MoviePage page = movieService.listMovies(MovieQuery.parse(parameters));
+    MoviePage page = movieService.searchMovies(MovieQuery.parse(parameters));
     return MovieMapper.toPageResponse(page);
   }
 }

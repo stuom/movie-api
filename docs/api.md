@@ -8,7 +8,7 @@ machine-readable one is the OpenAPI description served by the deployed service a
 |---|---|---|
 | `POST /api/v1/movies` | Add a movie | Available |
 | `GET /api/v1/movies/{id}` | Fetch one movie | Available |
-| `GET /api/v1/movies` | List movies a page at a time | Available (search fields come in the next slices) |
+| `GET /api/v1/movies` | List and search movies (one search field per request), a page at a time | Available |
 
 ## Conventions
 - Base path `/api/v1`. Request and response bodies are JSON (`Content-Type: application/json`).
@@ -123,7 +123,7 @@ request is safe: a `409` on the retry means the first attempt was stored.
 ## Fetch one movie: `GET /api/v1/movies/{id}`
 
 Returns one movie by its id. The movie comes from the service's in-memory copy of the catalog, the same
-copy that listing reads, so a movie is visible to both or to neither (ADR-0007).
+copy that listing and search read, so a movie is visible to both or to neither (ADR-0007).
 
 ```bash
 curl -i "$BASE_URL/api/v1/movies/53e87be920fdef6e6176fa0c355406d8"
@@ -152,31 +152,99 @@ The body is the movie in the same shape as the `201` body of [Add a movie](#add-
 `GET /api/v1/movies/` (trailing slash, no id) is not this endpoint: it is a `404` with the detail
 `"There is no endpoint at this path."`.
 
-## List movies: `GET /api/v1/movies`
+## List and search movies: `GET /api/v1/movies`
 
-Returns the whole catalog, one page at a time. Search fields (`name`, `genre`, ...) arrive in later
-slices on this same endpoint; until then they are unknown parameters and rejected (see below).
+Returns the movies one page at a time. With no search field it lists the whole catalog; with one
+search field it returns only the movies that match it. Search runs over the service's in-memory copy
+of the catalog, the same copy that [Fetch one movie](#fetch-one-movie-get-apiv1moviesid) reads
+(ADR-0007).
 
 ### Query parameters
+
+All parameters are optional.
+
+**Search fields: use at most one per request.**
+
+| Parameter | Type | Matches |
+|---|---|---|
+| `name` | text | The movie name contains the text: `alien` finds "Alien" and "Aliens", `wars` finds "Star Wars". |
+| `minYear` | whole number | `year >= minYear` (inclusive). Any whole number; a range outside the data simply matches nothing. |
+| `maxYear` | whole number | `year <= maxYear` (inclusive). Use with or without `minYear`; `minYear` must not be greater than `maxYear`. For one exact year, set both to the same value. |
+| `genre` | text | One of the movie's genres **equals** the text. Not a substring: `sci` does not find "Sci-fi". One genre per request. |
+| `viewerAge` | whole number, `0` to `120` | Movies a viewer of this age may watch: `ageLimit <= viewerAge`. A viewer exactly at the age limit may watch; `viewerAge=0` returns only movies with age limit `0`. |
+| `minRating` | whole number, `1` to `5` | `rating >= minRating` (inclusive). |
+| `maxRating` | whole number, `1` to `5` | `rating <= maxRating` (inclusive). Use with or without `minRating`; `minRating` must not be greater than `maxRating`. |
+| `director` | text | The movie has a director, and **every word** of the text is contained in the director's first name or last name. |
+| `actor` | text | **One single actor** has every word of the text in their first name or last name. The words are never spread over several actors: `ryan wright` does not find a movie with Ryan Gosling and Robin Wright. |
+| `synopsis` | text | The movie has a synopsis, and **every word** of the text is contained in it, in any order. |
+
+**Paging.**
 
 | Parameter | Type | Default | Allowed |
 |---|---|---|---|
 | `page` | whole number | `0` | `0` or more. Pages are numbered from `0`. |
 | `size` | whole number | `20` | `1` to `100`: the number of movies per page. |
 
-- Both are optional. An empty value (`?page=`) counts as not given, so the default applies. Values are trimmed.
+#### The one-field rule
+- One search field is one row of the table above, except that `minYear` + `maxYear` together are one
+  field (year), and `minRating` + `maxRating` together are one field (rating). `page` and `size` are
+  not search fields and can be combined with any search.
+- No search field lists every movie. Two or more different search fields are rejected with `400`,
+  and every search parameter received is named in `violations` (see [Failures](#failures-2)).
+  Filters are never combined, and an extra field is never silently ignored.
+- A parameter counts as received when it has a non-blank value, even when that value is unusable
+  (not a whole number, out of range, or given more than once). So `?minYear=abc&genre=drama`
+  reports both the bad number and the combination in one response.
+
+#### How text is matched
+- Text is compared after normalizing both sides: Unicode NFC, trimmed, runs of inner whitespace
+  collapsed to one space, lowercase. So matching ignores case and extra spaces: `?name=STAR   wars`
+  finds "Star Wars".
+- A *word* is a whitespace-separated part of the text. A word matches when it is contained in the
+  name or synopsis, not only when it equals a whole word there: `miss` finds "missing", and `ford`
+  finds "Harrison Ford". Repeating a word changes nothing.
+- `name` is matched as a whole: the normalized text must appear in the normalized name, with its
+  words in that order (`wars star` does not find "Star Wars").
+- `director` and `actor` match word by word against one person's first name and last name, in any
+  order: `ford`, `harrison`, `harrison ford` and `ford harrison` all find Harrison Ford, and
+  `lee jones` finds Tommy Lee Jones (last name `Lee Jones`).
+- Accents are not folded: `amelie` does not find "Amélie".
+- *Whitespace* means Java's `Character.isWhitespace`, as for the movie id. The non-breaking space
+  (U+00A0) is not whitespace: `harrison%C2%A0ford` is a single word and does not find Harrison Ford,
+  and a value of only a non-breaking space is not blank.
+- A movie without the searched field (no director, no actors, no synopsis) never matches that search.
+
+#### Values
+- Values are trimmed. An empty or blank value (`?name=`, `?name=%20%20`) counts as not given: for
+  `page` and `size` the default applies, and a blank search field does not count toward the one-field
+  rule. So `?name=&genre=drama` is a genre search.
 - A *whole number* is one or more ASCII digits `0`-`9` with an optional leading `-`, within the 32-bit
   integer range. Anything else is `must be a whole number`, including `+5`, `1.5`, `1e2` and digits
   from other scripts.
+- Every parameter may be given at most once. This includes empty values: `?name=&name=` is
+  `must be given only once`, although it does not count as a search field.
 - Values outside the allowed range are rejected with `400`, never clamped to the nearest allowed value.
 - Any other parameter is rejected with `400`, even with an empty value, so a typo such as `?pgae=2`
   is noticed instead of silently returning page 0. This includes parameters that clients or tools
   append on their own, such as cache-busters (`?_=1697212800000`) and tracking tags (`utm_source`,
   `utm_campaign`, ...): do not add them to requests to this endpoint.
 
+#### Examples (one search field each)
+`curl -G --data-urlencode` encodes spaces and other special characters in the values.
+
 ```bash
-curl -i "$BASE_URL/api/v1/movies"
-curl -i "$BASE_URL/api/v1/movies?page=1&size=10"
+curl -i "$BASE_URL/api/v1/movies"                                 # everything, first page
+curl -i "$BASE_URL/api/v1/movies?page=1&size=10"                  # everything, second page of 10
+curl -i "$BASE_URL/api/v1/movies?name=alien"
+curl -i "$BASE_URL/api/v1/movies?minYear=2000&maxYear=2009"       # the 2000s (one field: year)
+curl -i "$BASE_URL/api/v1/movies?minYear=1986&maxYear=1986"       # exactly 1986
+curl -i "$BASE_URL/api/v1/movies?genre=sci-fi"
+curl -i "$BASE_URL/api/v1/movies?viewerAge=12"
+curl -i "$BASE_URL/api/v1/movies?minRating=4"
+curl -i "$BASE_URL/api/v1/movies?director=spielberg"
+curl -i -G "$BASE_URL/api/v1/movies" --data-urlencode "actor=harrison ford"
+curl -i -G "$BASE_URL/api/v1/movies" --data-urlencode "synopsis=missing father"
+curl -i "$BASE_URL/api/v1/movies?genre=drama&page=2&size=5"       # paging works with any search
 ```
 
 ### Order
@@ -184,9 +252,11 @@ Movies are sorted by name, ignoring case, and movies with the same name by `id`.
 normalized name (the same normalization as the id: Unicode NFC, trimmed, inner whitespace collapsed,
 lowercase), then by `id`, both compared character by character (UTF-16 code units), not by language
 rules. So the order is the same for every request and every client, and a name starting with an
-accented letter (`Être et avoir`) sorts after `z`.
+accented letter (`Être et avoir`) sorts after `z`. Searches use the same order.
 
 ### Success: `200 OK`
+The same shape for listing and for searching. `GET /api/v1/movies?director=cameron` in a catalog
+where Aliens is the only movie directed by a Cameron:
 ```json
 {
   "items": [
@@ -211,22 +281,24 @@ accented letter (`Être et avoir`) sorts after `z`.
 
 | Member | Meaning |
 |---|---|
-| `items` | The movies on this page, in the order above, each with every movie field. At most `size` entries. |
+| `items` | The matching movies on this page, in the order above, each with every movie field. At most `size` entries. |
 | `page` | The page returned (the requested or default `page`). |
 | `size` | The page size used (the requested or default `size`). |
-| `totalItems` | The number of movies in the whole catalog. |
-| `totalPages` | `ceil(totalItems / size)`; `0` when the catalog is empty. The last page is `totalPages - 1`. |
+| `totalItems` | The number of matching movies: the whole catalog when there is no search field. |
+| `totalPages` | `ceil(totalItems / size)`; `0` when nothing matches. The last page is `totalPages - 1`. |
 
+- Movies are filtered first, then sorted and paged, so the pages contain only matches.
 - The last page holds the remainder and may have fewer than `size` items.
 - A page past the end (`page >= totalPages`) is not an error: it returns `200` with `"items": []` and
   the true `totalItems` and `totalPages`.
-- An empty catalog returns `"items": []`, `"totalItems": 0` and `"totalPages": 0`.
+- A search that matches nothing, or an empty catalog, returns `"items": []`, `"totalItems": 0` and
+  `"totalPages": 0`. It is not a `404`.
 
 ### Failures
 
 | Status | When | Body |
 |---|---|---|
-| `400 Bad Request` | A parameter is out of range, is not a whole number, is given more than once, or is not a known parameter. | Problem detail with a `violations` list naming **every** offending parameter. |
+| `400 Bad Request` | More than one search field, a parameter out of range, a lower bound greater than its upper bound, a value that is not a whole number, a parameter given more than once, or a parameter that is not known. | Problem detail with the fixed `detail` `"The query parameters are invalid; see violations."` and a `violations` list naming **every** problem. |
 | `500 Internal Server Error` | An unexpected error occurred. A failed catalog refresh is not one: the previous copy keeps being served. | Problem detail, see [`500`](#500-server-error). |
 
 | Problem | `field` | `message` |
@@ -234,8 +306,24 @@ accented letter (`Être et avoir`) sorts after `z`.
 | `page` below `0` | `page` | `must be 0 or more` |
 | `size` below `1` or above `100` | `size` | `must be between 1 and 100` |
 | Not a whole number (`abc`, `1.5`, `+5`, or outside -2147483648 to 2147483647) | the parameter | `must be a whole number` |
-| Given more than once (`?page=1&page=2`) | the parameter | `must be given only once` |
-| Not a parameter of this endpoint (`?genre=sci-fi`, `?pgae=2`) | the parameter | `is not a known parameter` |
+| Given more than once (`?page=1&page=2`, `?name=&name=`) | the parameter | `must be given only once` |
+| `viewerAge` below `0` or above `120` | `viewerAge` | `must be between 0 and 120` |
+| `minRating` or `maxRating` below `1` or above `5` | the parameter | `must be between 1 and 5` |
+| `minYear` greater than `maxYear` | `minYear` | `must not be greater than maxYear` |
+| `minRating` greater than `maxRating` | `minRating` | `must not be greater than maxRating` |
+| Two or more search fields | **each** search parameter received | `must not be combined with another search field; received: <fields>` |
+| Not a parameter of this endpoint (`?pgae=2`, `?utm_source=x`) | the parameter | `is not a known parameter` |
+
+- `min > max` is only checked when both bounds are usable. `?minRating=6&maxRating=3` reports only
+  `minRating` `must be between 1 and 5`, and `?minYear=abc&maxYear=1990` only `must be a whole number`.
+- In the one-field message, `<fields>` lists the search parameters received, in the order of the
+  search table (not the order of the request), separated by `, `. The two bounds of one field are
+  joined with ` + `: `?genre=drama&maxYear=2000&minYear=1990` gives
+  `received: minYear + maxYear, genre`, once on each of `minYear`, `maxYear` and `genre`.
+- Violations are listed in a fixed order: `page`, `size`, then each search parameter in the order
+  of the search table (given more than once, not a whole number, out of range), then `min > max`,
+  then the one-field violations, then unknown parameters.
+- Only parameter names are echoed, never the rejected values.
 
 `GET /api/v1/movies?page=-1&size=101&pgae=2`:
 ```json
@@ -252,8 +340,40 @@ accented letter (`Être et avoir`) sorts after `z`.
   ]
 }
 ```
-Violations are listed in a fixed order: `page`, then `size`, then unknown parameters. The rejected
-value is never repeated in the response; the name of an unknown parameter is, as its `field`.
+
+Two search fields, `GET /api/v1/movies?actor=ford&director=spielberg`:
+```json
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "The query parameters are invalid; see violations.",
+  "instance": "/api/v1/movies",
+  "violations": [
+    {"field": "director", "message": "must not be combined with another search field; received: director, actor"},
+    {"field": "actor", "message": "must not be combined with another search field; received: director, actor"}
+  ]
+}
+```
+
+`GET /api/v1/movies?minYear=2010&maxYear=2000&minRating=9`, an inverted year range, a rating out of
+range, and two search fields:
+```json
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "The query parameters are invalid; see violations.",
+  "instance": "/api/v1/movies",
+  "violations": [
+    {"field": "minRating", "message": "must be between 1 and 5"},
+    {"field": "minYear", "message": "must not be greater than maxYear"},
+    {"field": "minYear", "message": "must not be combined with another search field; received: minYear + maxYear, minRating"},
+    {"field": "maxYear", "message": "must not be combined with another search field; received: minYear + maxYear, minRating"},
+    {"field": "minRating", "message": "must not be combined with another search field; received: minYear + maxYear, minRating"}
+  ]
+}
+```
 
 ## Errors
 Every error, on every endpoint, is an RFC 7807 problem detail with `Content-Type: application/problem+json`

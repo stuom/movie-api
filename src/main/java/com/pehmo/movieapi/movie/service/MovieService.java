@@ -61,8 +61,11 @@ public class MovieService {
     return catalog.findById(id).orElseThrow(() -> new MovieNotFoundException(id));
   }
 
-  /** Returns the requested page of the whole catalog, sorted by name and then id. */
-  public MoviePage listMovies(MovieQuery query) {
-    return MovieSearch.pageOf(catalog.movies(), query.paging());
+  /**
+   * Returns the requested page of the catalog movies that match the query's criteria, sorted by
+   * name and then id; with no search field, the page of the whole catalog.
+   */
+  public MoviePage searchMovies(MovieQuery query) {
+    return MovieSearch.search(catalog.movies(), query.criteria(), query.paging());
   }
 }

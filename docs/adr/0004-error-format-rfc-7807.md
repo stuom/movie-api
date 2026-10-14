@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-12
-- **Updated:** 2026-10-13 (slice 04: problem members and extensions, `ApiExceptionHandler`, unreadable bodies, `413`, `500` detail per cause)
+- **Updated:** 2026-10-13 (slice 04: problem members and extensions, `ApiExceptionHandler`, unreadable bodies, `413`, `500` detail per cause); 2026-10-14 (slice 08: query violations)
 
 ## Context
 Clients need consistent, machine-readable errors that never leak internals.
@@ -19,6 +19,7 @@ All errors are returned as `ProblemDetail` by one `@RestControllerAdvice`: `400`
 - **Members:** `type` stays `about:blank` and `title` is the HTTP status phrase. `instance` is the request path. `detail` is always written by the handler and never copied from an exception message, so class names, Jackson messages and storage errors cannot leak.
 - **Extensions:**
   - `violations`: a list of `{field, message}` on `400` for a request body. It uses the API's own `common/ProblemViolation` record, so the service's `FieldViolation` never becomes part of the API.
+  - Query parameters (slice 07, extended in slice 08): `InvalidQueryException` becomes `400` with the fixed detail "The query parameters are invalid; see violations." and one violation per problem, `field` being the parameter name. Combining search fields gives one violation per search parameter received, so `field` is always a real parameter name and the fields never have to be parsed out of the `detail` (ADR-0007).
   - `movieId`: on `409`, the id of the movie that already exists.
 - **Broken rules:** `InvalidMovieException` becomes `400` with every violation and a counted detail ("breaks 1 rule", "breaks 3 rules").
 - **Unreadable bodies:** these become `400`. When Jackson knows the location, there is one violation whose path is rendered by `JsonFieldPath` in the same format as `MovieRules`. Its message is "is not a known field", "has the wrong type" or "is out of range". When there is no location (invalid JSON, not an object, repeated key, trailing content, missing body), `violations` is left out.

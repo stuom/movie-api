@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-13
-- **Updated:** 2026-10-13 (`year` became `minYear` / `maxYear`; searches use one field at a time, not combinations; get by id reads from the catalog); 2026-10-14 (read budget and ceiling of about 500 movies, see ADR-0013)
+- **Updated:** 2026-10-13 (`year` became `minYear` / `maxYear`; searches use one field at a time, not combinations; get by id reads from the catalog); 2026-10-14 (read budget and ceiling of about 500 movies, see ADR-0013); 2026-10-14 (slice 08, search implemented: one-field violation format, substring word matching, repeated or unparsable values count as given)
 - **Supersedes:** ADR-0005. **Amends:** ADR-0002 (pagination and filters), ADR-0003 (how Firestore is used), ADR-0006 (stored fields).
 
 ## Context
@@ -29,17 +29,19 @@ Single-field searches would be easy for some fields in Firestore: ranges on year
 - `GET /movies/{id}` also reads from the catalog snapshot, not from Firestore. Lookups then cost no reads and behave the same as search: a movie is either visible to both or to neither.
 - `MovieCatalog` keeps an immutable in-memory snapshot of all movies. It loads at startup, is replaced after every successful create, and reloads when older than `app.catalog.refresh-interval` (default 60 minutes).
 - `MovieSearch` (plain Java in the service layer) applies the search, sorts by name then id, and paginates.
-- **One search field per request.** Sending two or more different search fields is a `400` that names them; they are never combined or silently ignored. `minYear` + `maxYear` count together as one field (year) and `minRating` + `maxRating` count together as one field (rating). `page` and `size` are not search fields. No search field means list everything.
+- **One search field per request.** Sending two or more different search fields is a `400`; they are never combined or silently ignored. The fields are named in `violations` (ADR-0004), not in the fixed `detail`: one violation per search parameter received, each with the message `must not be combined with another search field; received: <fields>`, where `<fields>` lists the parameter names in the order of the contract table and joins the two bounds of one field with ` + ` (for example `received: minYear + maxYear, genre`). Only names are echoed, never values.
+- A search parameter counts as given for the one-field rule whenever it has a non-blank value, even when that value is repeated, not a whole number or out of range, so a client sees every problem in one response. A parameter with only blank values (`name=&name=`) does not count, although repeating it is still `must be given only once`, as for `page` and `size`. `minYear` + `maxYear` count together as one field (year) and `minRating` + `maxRating` count together as one field (rating). `page` and `size` are not search fields. No search field means list everything.
 - Search semantics (the contract, also in AGENTS.md and `docs/api.md`):
   - `name`: case-insensitive substring.
-  - `minYear`, `maxYear`: inclusive bounds on the release year, either or both, any integers; `minYear > maxYear` is a `400`. For one exact year set both to the same value. A year outside the data simply matches nothing.
+  - `minYear`, `maxYear`: inclusive bounds on the release year, either or both, any integers; `minYear > maxYear` is a `400` with one violation on `minYear`, `must not be greater than maxYear`, checked only when both bounds are usable. For one exact year set both to the same value. A year outside the data simply matches nothing.
   - `genre`: case-insensitive exact match against any of the movie's genres.
-  - `viewerAge`: `ageLimit <= viewerAge` (inclusive). Range 0-120.
-  - `minRating`, `maxRating`: inclusive bounds, either or both, integers 1-5; `minRating > maxRating` is a `400`.
+  - `viewerAge`: `ageLimit <= viewerAge` (inclusive). Range 0-120 (`must be between 0 and 120`).
+  - `minRating`, `maxRating`: inclusive bounds, either or both, integers 1-5 (`must be between 1 and 5`); `minRating > maxRating` is a `400` with one violation on `minRating`, `must not be greater than maxRating`, checked only when both bounds are whole numbers in range.
   - `director`: the director's first name or last name contains every word of the text (case-insensitive).
   - `actor`: some actor's first name or last name contains every word of the text; the words must match the same actor.
   - `synopsis`: contains every word of the text, in any order.
-  - Blank text parameters count as not provided. Accents are not folded.
+  - Words match as **substrings** (decided in slice 08): `miss` finds "missing" and a single `a` matches almost every synopsis. Whole-word matching was the alternative; substrings are simpler to explain, and match the `name` rule. `genre` stays an exact match.
+  - Blank text parameters count as not provided. Accents are not folded. Whitespace is `Character.isWhitespace`, so a non-breaking space joins two words into one and an NBSP-only value is not blank.
 - Pagination is `page` (0-based) and `size` (default 20, max 100); the response has `totalItems` and `totalPages`.
 - Cloud Run stays at `--max-instances 1` so there is a single catalog.
 

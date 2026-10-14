@@ -5,8 +5,8 @@ import java.util.List;
 
 /**
  * Thrown when the query parameters of a list request are unusable: out of range, not a whole
- * number, repeated or unknown. It carries every problem, so the API can answer {@code 400} naming
- * all of them at once (ADR-0004).
+ * number, repeated, unknown, a lower bound above its upper bound, or more than one search field. It
+ * carries every problem, so the API can answer {@code 400} naming all of them at once (ADR-0004).
  */
 public final class InvalidQueryException extends RuntimeException {
 

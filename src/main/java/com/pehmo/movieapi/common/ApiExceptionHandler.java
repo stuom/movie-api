@@ -74,7 +74,10 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     return problem;
   }
 
-  /** Unusable query parameters: every problem, page and size first, then unknown names. */
+  /**
+   * Unusable query parameters: every problem, in this order: page, size, each search parameter in
+   * table order, a lower bound above its upper bound, combined search fields, then unknown names.
+   */
   @ExceptionHandler(InvalidQueryException.class)
   public ProblemDetail handleInvalidQuery(InvalidQueryException exception) {
     ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, INVALID_QUERY);

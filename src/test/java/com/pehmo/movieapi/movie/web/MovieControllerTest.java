@@ -29,6 +29,7 @@ import com.pehmo.movieapi.movie.service.MovieNotFoundException;
 import com.pehmo.movieapi.movie.service.MoviePage;
 import com.pehmo.movieapi.movie.service.MoviePageRequest;
 import com.pehmo.movieapi.movie.service.MovieQuery;
+import com.pehmo.movieapi.movie.service.MovieSearchCriteria;
 import com.pehmo.movieapi.movie.service.MovieService;
 import com.pehmo.movieapi.movie.service.MovieStorageException;
 import com.pehmo.movieapi.movie.service.MovieTestData;
@@ -181,14 +182,15 @@ class MovieControllerTest {
         throws Exception {
       // given
       Movie movie = MovieTestData.aMovie().buildMovie();
-      given(movieService.listMovies(any(MovieQuery.class)))
+      given(movieService.searchMovies(any(MovieQuery.class)))
           .willReturn(new MoviePage(List.of(movie), 0, 20, 1, 1));
 
       // when
       ResultActions result = mockMvc.perform(get(PATH));
 
       // then
-      verify(movieService).listMovies(new MovieQuery(new MoviePageRequest(0, 20)));
+      verify(movieService)
+          .searchMovies(new MovieQuery(new MovieSearchCriteria.All(), new MoviePageRequest(0, 20)));
       result
           .andExpect(status().isOk())
           .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
@@ -204,7 +206,7 @@ class MovieControllerTest {
     @Test
     void shouldPassPageAndSizeToServiceWhenBothAreGiven() throws Exception {
       // given
-      given(movieService.listMovies(any(MovieQuery.class)))
+      given(movieService.searchMovies(any(MovieQuery.class)))
           .willReturn(new MoviePage(List.of(), 1, 10, 0, 0));
 
       // when
@@ -212,13 +214,14 @@ class MovieControllerTest {
 
       // then
       result.andExpect(status().isOk());
-      verify(movieService).listMovies(new MovieQuery(new MoviePageRequest(1, 10)));
+      verify(movieService)
+          .searchMovies(new MovieQuery(new MovieSearchCriteria.All(), new MoviePageRequest(1, 10)));
     }
 
     @Test
     void shouldReturnEmptyItemsArrayWhenPageHasNoMovies() throws Exception {
       // given
-      given(movieService.listMovies(any(MovieQuery.class)))
+      given(movieService.searchMovies(any(MovieQuery.class)))
           .willReturn(new MoviePage(List.of(), 0, 20, 0, 0));
 
       // when
@@ -233,6 +236,45 @@ class MovieControllerTest {
           .andExpect(jsonPath("$.size").value(20))
           .andExpect(jsonPath("$.totalItems").value(0))
           .andExpect(jsonPath("$.totalPages").value(0));
+    }
+
+    @Test
+    void shouldPassSearchParameterToServiceAsCriteriaWhenActorIsGiven() throws Exception {
+      // given
+      given(movieService.searchMovies(any(MovieQuery.class)))
+          .willReturn(new MoviePage(List.of(), 0, 20, 0, 0));
+
+      // when
+      ResultActions result = mockMvc.perform(get(PATH).param("actor", "harrison ford"));
+
+      // then
+      result.andExpect(status().isOk());
+      verify(movieService)
+          .searchMovies(
+              new MovieQuery(
+                  new MovieSearchCriteria.ActorNamed(List.of("harrison", "ford")),
+                  new MoviePageRequest(0, 20)));
+    }
+
+    @Test
+    void shouldReturn400WithBothViolationsAndNotCallServiceWhenTwoSearchFieldsAreGiven()
+        throws Exception {
+      // given
+      MockHttpServletRequestBuilder request =
+          get(PATH).param("actor", "ford").param("director", "spielberg");
+
+      // when
+      ResultActions result = mockMvc.perform(request);
+
+      // then
+      String message = "must not be combined with another search field; received: director, actor";
+      expectProblem(result, HttpStatus.BAD_REQUEST, LIST_PROBLEM_DETAIL, PATH)
+          .andExpect(jsonPath("$.violations.length()").value(2))
+          .andExpect(jsonPath("$.violations[0].field").value("director"))
+          .andExpect(jsonPath("$.violations[0].message").value(message))
+          .andExpect(jsonPath("$.violations[1].field").value("actor"))
+          .andExpect(jsonPath("$.violations[1].message").value(message));
+      verifyNoInteractions(movieService);
     }
 
     @Test
@@ -302,7 +344,7 @@ class MovieControllerTest {
     void shouldReturnAllViolationsInOrderWhenSeveralParametersAreInvalid() throws Exception {
       // given
       MockHttpServletRequestBuilder request =
-          get(PATH).param("size", "0").param("page", "-1").param("genre", "drama");
+          get(PATH).param("size", "0").param("page", "-1").param("pgae", "drama");
 
       // when
       ResultActions result = mockMvc.perform(request);
@@ -312,7 +354,7 @@ class MovieControllerTest {
           .andExpect(jsonPath("$.violations.length()").value(3))
           .andExpect(jsonPath("$.violations[0].field").value("page"))
           .andExpect(jsonPath("$.violations[1].field").value("size"))
-          .andExpect(jsonPath("$.violations[2].field").value("genre"));
+          .andExpect(jsonPath("$.violations[2].field").value("pgae"));
       verifyNoInteractions(movieService);
     }
   }

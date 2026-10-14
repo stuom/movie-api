@@ -48,9 +48,11 @@ src/main/java/com/pehmo/movieapi/
                   InvalidMovieException + FieldViolation, MovieId (deterministic id), TextNormalization (normalize, trim),
                   DuplicateMovieException, MovieStorageException (storage failures without storage types, ADR-0010),
                   MovieQuery (parses the raw query parameters, reports every problem at once), MoviePageRequest (page and size),
+                  QueryParameterValues (single value, blank, repeat and whole-number rules shared by paging and search),
                   InvalidQueryException, MovieNotFoundException,
-                  MovieSearchCriteria (sealed: exactly one search field or none; search slices), MovieSearch (sorting, paging; matching
-                  added by the search slices), MoviePage,
+                  MovieSearchCriteria (sealed: exactly one search field or none), MovieSearchCriteriaParser (parses the search
+                  parameters and applies the one-field rule; its FIELDS list is the single list of search parameters),
+                  MovieSearch (matching, sorting, paging), MoviePage,
                   MovieCatalog (in-memory snapshot of all movies), MovieSeedLoader (loads the sample data on startup)
     persistence/  MovieRepository (interface), FirestoreMovieRepository, MovieDocument (storage mapping),
                   FirestoreErrors (recognizes ALREADY_EXISTS)
@@ -119,7 +121,7 @@ Rules:
 | `synopsis` | text | The synopsis contains **every word** of the text, in any order (case-insensitive). |
 | `page`, `size` | integers | Page number (0-based, default 0) and page size (default 20, max 100). |
 
-- One field means one row of this table, except that `minYear` + `maxYear` count together as one field (year) and `minRating` + `maxRating` count together as one field (rating). `page` and `size` are not search fields. Sending two or more different search fields returns `400` naming them; filters are never combined.
+- One field means one row of this table, except that `minYear` + `maxYear` count together as one field (year) and `minRating` + `maxRating` count together as one field (rating). `page` and `size` are not search fields. Sending two or more different search fields returns `400` whose `violations` name every search parameter received; filters are never combined.
 - Unknown query parameters (typos, cache-busters, `utm_*` tags) are rejected with `400`, like unknown body fields (ADR-0002, ADR-0012).
   `page`/`size` outside their range are `400`, never clamped; a page past the end is `200` with empty `items` and the true totals.
 - A *word* is a whitespace-separated part of the text. Text parameters are trimmed; a blank value counts as not provided. Accents are not folded.
@@ -135,7 +137,7 @@ Rules:
    "synopsis": "Ellen Ripley is rescued by a deep salvage team after being in hypersleep for 57 years."}
   ```
 - Errors use RFC 7807 `ProblemDetail`: `400` for invalid input (bad body, `viewerAge` or ratings out of range, `minRating` above `maxRating`, `minYear` above `maxYear`, more than one search field, bad `page`/`size`), `404` not found, `409` duplicate (with `movieId`, the id of the existing movie), `413` request body too large. Never leak stack traces.
-- Every endpoint is annotated for OpenAPI (summary, parameters, response codes) and described in `docs/api.md`. Adding a filter means updating this table, `MovieQuery` (known parameters), `MovieSearchCriteria`, `MovieSearch`, the OpenAPI annotations, `docs/api.md` and the tests (see the `movie-search` skill).
+- Every endpoint is annotated for OpenAPI (summary, parameters, response codes) and described in `docs/api.md`. Adding a filter means updating this table, `MovieSearchCriteriaParser.FIELDS` (which also makes the parameter known to `MovieQuery`), `MovieSearchCriteria`, `MovieSearch`, the OpenAPI annotations, `docs/api.md` and the tests (see the `movie-search` skill).
 
 ## Persistence and catalog rules (details in the `firestore-persistence` and `movie-search` skills)
 - Firestore is the **durable store only**. Allowed operations: create one movie (atomic, via the deterministic id), read all movies. Get by id reads from `MovieCatalog`, not from Firestore. Do not add filtered Firestore queries or composite indexes: all searching happens in memory (ADR-0007).

@@ -39,7 +39,7 @@ Never edit `src/`. Do not call the deployed service yourself unless the user giv
    - `synopsis` (every word, any order, case-insensitive): the unique word; a second word plus the unique word in reverse order; the unique word plus a word that is not there -> excludes the fixture.
    - Blank text next to one real field is accepted: `genre=%20&actor=<actor word>` -> `200`, includes the fixture.
    - Search with paging: the unique genre with `page=0&size=1` -> one item, `totalItems` 1; `page=1&size=1` -> empty `items`, `totalItems` still 1.
-   - Errors, each `400` with a `ProblemDetail`: two search fields (`actor` + `director`, and `minYear` + `minRating`; the `detail` must name the fields), `minRating=5&maxRating=1`, `minYear=2010&maxYear=2000`, `viewerAge=121`, `viewerAge=-1`, `minRating=6`, `viewerAge=abc`.
+   - Errors, each `400` with a `ProblemDetail`: two search fields (`actor` + `director`, and `minYear` + `minRating`; the `violations` must name every search parameter received, as in `docs/api.md`), `minRating=5&maxRating=1`, `minYear=2010&maxYear=2000`, `viewerAge=121`, `viewerAge=-1`, `minRating=6`, `viewerAge=abc`.
 
 ## The fixture (unique per run)
 Build every value from `runId` so searches are predictable and reruns never collide:

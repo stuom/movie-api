@@ -66,8 +66,53 @@ exist. Two conditions are assumed: no one adds a movie while the folder runs (th
 compare against the default list), and fewer than 20 names sort before `0 Pmtest <runId>` (so it stays on page 0). Old
 `0 Pmtest` leftovers sort before the new one, so remove them now and then.
 
+### 03 Search (`GET /api/v1/movies` with one search field)
+Every search searches for the run's own test movie, so no assertion depends on the sample data. The
+test movie's values are all built from `runId`: name `0 Pmtest <runId>`, year 1900, genres
+`Pmgenre<runId>` and `Drama`, age limit 18, rating 1, director `Pmdir<runId> Lastdir<runId>`, actors
+`Pmact<runId> Lastact<runId>` and `Other<runId> Person<runId>`, synopsis `pmsyn<runId> alpha beta`.
+
+Every `200` search uses `size=100` (except the paging requests) and checks: JSON content type; the
+page shape (`page`, `size`, `totalItems`, `totalPages` = `ceil(totalItems / size)`); the number of
+items for that page, so `totalItems` counts the matches; the order (name ignoring case, then `id`);
+that **every** returned item satisfies the search rule (checked with the same normalization as the
+server: NFC, whitespace collapsed, trimmed, lowercase); and that the test movie is (positive cases)
+or is not (negative cases) among the items. Requests marked "upper case" set a request-local
+variable `runIdUpper` in their pre-request script.
+
+| Field | Requests (one search field each) |
+|---|---|
+| `name` (substring, case-insensitive) | `pmtest <runId>`: exactly the test movie (`totalItems` 1, same body as when added; also proves the rejected and duplicate requests of folder 01 stored nothing); the same in upper case; only `<runId>` (a substring that is not a prefix); a name nothing contains: `items` `[]`, `totalItems` 0, `totalPages` 0. |
+| year (`minYear` / `maxYear`, inclusive) | Both 1900 (exact year); only `minYear=1900`; only `maxYear=1900`; `minYear=1901` and `maxYear=1899` exclude the test movie. |
+| `genre` (equal, case-insensitive, any genre) | The unique genre (exactly the test movie); the same in upper case; the second genre `drama`; `Pmgenre` (only part of the genre) excludes it; an unknown genre: empty. |
+| `viewerAge` (`ageLimit <= viewerAge`) | 18 includes it (equal to the limit); 17 excludes it; 0 returns only age limit 0. |
+| rating (`minRating` / `maxRating`, inclusive) | `maxRating=1` includes it; `minRating=2` excludes it; `minRating=1&maxRating=1` includes it, every item rated 1; `minRating=5` returns only rating 5. |
+| `director` (every word in the first or last name) | First name; last name (lower case); both words; both reversed in mixed case with extra spaces. Excluded: a director word plus an actor's last name; an actor's name searched as director. |
+| `actor` (every word in the first or last name of the **same** actor) | First name; last name (upper case); both words of actor 1; both words of actor 2, reversed. Excluded: first name of actor 1 plus last name of actor 2; the director's name searched as actor. |
+| `synopsis` (every word, any order, substring) | The unique word (upper case); `beta pmsyn<runId>` (reverse order); `pmsyn<runId> alph` (part of a word); `pmsyn<runId> gamma` (a missing word) excludes it. |
+| blank text | `genre=%20&actor=Pmact<runId>`: the blank genre counts as not given, so this is an actor search (`200`, includes the test movie). |
+| paging | `genre=Pmgenre<runId>&page=0&size=1`: the one match, `totalItems` 1; `page=1&size=1`: `items` `[]`, `totalItems` and `totalPages` still 1. |
+
+Errors: each a `400` problem detail (`title` `Bad Request`, `instance` `/api/v1/movies`) with the
+`detail` `The query parameters are invalid; see violations.` and **exactly** these `violations`, in
+order:
+
+| Request | `violations` |
+|---|---|
+| `actor=...&director=...` | `director`, then `actor`, each `must not be combined with another search field; received: director, actor` (table order, not request order). |
+| `minYear=1900&minRating=1` | `minYear`, then `minRating`, each `... received: minYear, minRating`. |
+| `minYear=2010&maxYear=2000&minRating=9` (the `docs/api.md` example) | `minRating` `must be between 1 and 5`; `minYear` `must not be greater than maxYear`; then `minYear`, `maxYear`, `minRating` each `... received: minYear + maxYear, minRating`. |
+| `minYear=2010&maxYear=2000` | `minYear` `must not be greater than maxYear`. |
+| `minRating=5&maxRating=1` | `minRating` `must not be greater than maxRating`. |
+| `minRating=6`, `maxRating=0` | The parameter, `must be between 1 and 5`. |
+| `viewerAge=121`, `viewerAge=-1` | `viewerAge` `must be between 0 and 120`. |
+| `viewerAge=abc` | `viewerAge` `must be a whole number`. |
+| `genre=drama&genre=drama` | `genre` `must be given only once`. |
+
+The broad searches (`minYear=1900`, `viewerAge=18`, `maxRating=1`, `genre=drama`, ...) expect the
+test movie on their first page of 100. It sorts near the top (its name starts with `0`), so this
+holds while fewer than 100 names sort before it; remove old `0 Pmtest` leftovers now and then.
+
+## Checks on every request
 Every request also runs a collection-level check: an error response (4xx/5xx) must not contain
 exception names or stack-trace lines.
-
-Search fields are not implemented yet; until then they are unknown parameters (`400`). The search
-folder will be added with them.

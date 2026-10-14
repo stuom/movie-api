@@ -182,16 +182,16 @@ class MovieServiceTest {
   }
 
   @Test
-  void shouldReturnSortedPageOfCatalogSnapshotWhenListingMovies() {
+  void shouldReturnSortedPageOfCatalogSnapshotWhenSearchingWithoutCriteria() {
     // given
     Movie brazil = MovieTestData.aMovie().withName("Brazil").buildMovie();
     Movie alien = MovieTestData.aMovie().withName("Alien").buildMovie();
     Movie heat = MovieTestData.aMovie().withName("Heat").buildMovie();
     when(catalog.movies()).thenReturn(List.of(brazil, alien, heat));
-    MovieQuery query = new MovieQuery(new MoviePageRequest(1, 2));
+    MovieQuery query = new MovieQuery(new MovieSearchCriteria.All(), new MoviePageRequest(1, 2));
 
     // when
-    MoviePage page = service.listMovies(query);
+    MoviePage page = service.searchMovies(query);
 
     // then
     assertThat(page.items()).containsExactly(heat);
@@ -202,12 +202,32 @@ class MovieServiceTest {
   }
 
   @Test
+  void shouldReturnOnlyMatchingMoviesOfCatalogSnapshotWhenCriteriaAreGiven() {
+    // given
+    Movie brazil =
+        MovieTestData.aMovie().withName("Brazil").withGenres(List.of("Sci-fi")).buildMovie();
+    Movie heat = MovieTestData.aMovie().withName("Heat").withGenres(List.of("Crime")).buildMovie();
+    when(catalog.movies()).thenReturn(List.of(brazil, heat));
+    MovieQuery query =
+        new MovieQuery(new MovieSearchCriteria.Genre("crime"), new MoviePageRequest(0, 20));
+
+    // when
+    MoviePage page = service.searchMovies(query);
+
+    // then
+    assertThat(page.items()).containsExactly(heat);
+    assertThat(page.totalItems()).isEqualTo(1);
+  }
+
+  @Test
   void shouldReturnEmptyPageWhenCatalogIsEmpty() {
     // given
     when(catalog.movies()).thenReturn(List.of());
 
     // when
-    MoviePage page = service.listMovies(new MovieQuery(new MoviePageRequest(0, 20)));
+    MoviePage page =
+        service.searchMovies(
+            new MovieQuery(new MovieSearchCriteria.All(), new MoviePageRequest(0, 20)));
 
     // then
     assertThat(page.items()).isEmpty();
