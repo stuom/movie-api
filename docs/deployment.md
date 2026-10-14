@@ -178,10 +178,14 @@ check the pricing pages again before relying on these.
   catalog under about 500 movies (ADR-0013). Seeding costs 20 writes, once.
 - **Hidden costs** to watch:
   - **Artifact Registry:** each deploy pushes an image of about 250 MB to `cloud-run-source-deploy`, and the
-    free storage is 0.5 GB, so the third kept image already exceeds it. Set a cleanup policy on the repository
-    that keeps only the most recent images (Artifact Registry console, or
-    `gcloud artifacts repositories set-cleanup-policies`; check its `--help`), or delete old images by hand.
-    Keep at least the images of the revisions you may want to roll back to.
+    free storage is 0.5 GB (the first image was 190 MB). A cleanup policy keeps the **2 most recent images**
+    (the serving revision and one to roll back to) and deletes every older one; a Keep rule wins over a
+    Delete rule. It was set on 2026-10-14 from `config/artifact-registry-cleanup-policy.json`:
+    ```
+    gcloud artifacts repositories set-cleanup-policies cloud-run-source-deploy --location=europe-north1 --project=movie-api-511411 --policy=config/artifact-registry-cleanup-policy.json --no-dry-run
+    ```
+    Cleanup runs in the background, typically within a day. Rolling back further than one revision needs a
+    redeploy of an older commit.
   - **Cloud Storage:** the `run-sources-*` bucket keeps every uploaded source archive.
   - **Cloud Build:** build minutes are billed beyond the free allowance. Every build downloads the Gradle
     distribution and all dependencies again (no cache between source builds), which makes builds slower.

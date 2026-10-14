@@ -46,6 +46,8 @@ The `deployCloudRun` task depends on `check`, so a failing test, linter or cover
    `gcloud projects add-iam-policy-binding movie-api-511411 --member="serviceAccount:<that account>" --role="roles/run.builder" --condition=None`.
    Whoever deploys also needs Service Account User (`iam.serviceAccounts.actAs`) on `movie-api-run`; project owners have it.
 8. The first source deploy creates an Artifact Registry repository (`cloud-run-source-deploy`). The task passes `--quiet`, which accepts that default.
+9. After the first deploy, keep only the 2 most recent images (free storage is 0.5 GB; an image is about 190 MB):
+   `gcloud artifacts repositories set-cleanup-policies cloud-run-source-deploy --location=europe-north1 --project=movie-api-511411 --policy=config/artifact-registry-cleanup-policy.json --no-dry-run`
 
 ## Everyday deployment
 ```
