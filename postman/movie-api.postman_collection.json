@@ -1,13 +1,13 @@
 {
   "info": {
     "name": "Movie API",
-    "description": "API tests for the deployed Movie API (contract: docs/api.md). Set `baseUrl` in the environment to the Cloud Run URL (no trailing slash) and run the whole collection in order with the Collection Runner.\n\n**Data warning:** Each run of the collection adds exactly one movie named `0 Pmtest <runId>` to the real database. There is no delete endpoint: remove leftovers by hand in the Firestore console.",
+    "description": "API tests for the deployed Movie API (contract: docs/api.md). Set `baseUrl` in the environment to the Cloud Run URL (no trailing slash) and run the whole collection in order with the Collection Runner.\n\n**Data warning:** Each run of the collection adds one movie named `0 Pmtest <runId>` to the real database. There is no delete endpoint: remove leftovers by hand in the Firestore console. If a test of a 400 or 413 request fails, that request may have stored a movie whose name starts with `0 Pmtest`; delete it the same way.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
     {
       "name": "01 Add movie",
-      "description": "POST /api/v1/movies: create (201, Location, trimmed texts), fetching the new movie through its Location (GET /api/v1/movies/{id}, 200 with the same body), an unknown id (404), the duplicate rule (409 with movieId), rule violations and unknown fields (400 problem details). Only the first request stores a movie.\n\nEach run of the collection adds exactly one movie named `0 Pmtest <runId>` to the real database. There is no delete endpoint: remove leftovers by hand in the Firestore console.",
+      "description": "POST /api/v1/movies: create (201, Location, trimmed texts), fetching the new movie through its Location (GET /api/v1/movies/{id}, 200 with the same body), an unknown id (404), the duplicate rule (409 with movieId), rule violations, unknown fields, malformed JSON, a wrong type (400 problem details) and a body over 256 KB (413). Only the first request is meant to store a movie.\n\nEach run of the collection adds one movie named `0 Pmtest <runId>` to the real database. There is no delete endpoint: remove leftovers by hand in the Firestore console. If a test of a 400 or 413 request fails, that request may have stored a movie whose name starts with `0 Pmtest`; delete it the same way.",
       "item": [
         {
           "name": "POST add a movie - 201 with trimmed fields",
@@ -97,7 +97,7 @@
             }
           ],
           "request": {
-            "description": "Adds the run's test movie `0 Pmtest {{runId}}` (name, one genre, the director's last name and the synopsis padded with spaces) and saves its id as `movieId`, its `Location` as `movieLocation` and the 201 body as `createdMovie`. Its pre-request script sets a fresh `runId`.\n\n**This is the request that adds a movie to the real database** (exactly one per run). Remove it by hand in the Firestore console.",
+            "description": "Adds the run's test movie `0 Pmtest {{runId}}` (name, one genre, the director's last name and the synopsis padded with spaces) and saves its id as `movieId`, its `Location` as `movieLocation` and the 201 body as `createdMovie`. Its pre-request script sets a fresh `runId`.\n\n**This is the request that adds a movie to the real database** (one per run). Remove it by hand in the Firestore console.",
             "method": "POST",
             "header": [
               {
@@ -404,6 +404,1051 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"0 Pmtest unknown {{runId}}\",\n  \"year\": 1900,\n  \"genres\": [\"Pmgenre{{runId}}\"],\n  \"ageLimit\": 18,\n  \"rating\": 1,\n  \"synopsys\": \"pmsyn{{runId}} misspelled field\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST invalid movie, missing name - 400 with violations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name name as 'is required'\", function () {",
+                  "    pm.expect(body.violations).to.be.an(\"array\");",
+                  "    const found = body.violations.filter(function (v) { return v.field === \"name\"; });",
+                  "    pm.expect(found, \"a violation for name\").to.have.lengthOf(1);",
+                  "    pm.expect(found[0].message).to.eql(\"is required\");",
+                  "    pm.expect(body.violations, \"no other field is reported\").to.have.lengthOf(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Otherwise valid movie with the shared name `0 Pmtest invalid {{runId}}` (the missing-name and blank-name requests have no usable name); only missing name is wrong. Stores nothing.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"year\": 1900,\n  \"genres\": [\n    \"Pminvalid{{runId}}\"\n  ],\n  \"ageLimit\": 18,\n  \"rating\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST invalid movie, blank name - 400 with violations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name name as 'is required'\", function () {",
+                  "    pm.expect(body.violations).to.be.an(\"array\");",
+                  "    const found = body.violations.filter(function (v) { return v.field === \"name\"; });",
+                  "    pm.expect(found, \"a violation for name\").to.have.lengthOf(1);",
+                  "    pm.expect(found[0].message).to.eql(\"is required\");",
+                  "    pm.expect(body.violations, \"no other field is reported\").to.have.lengthOf(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Otherwise valid movie with the shared name `0 Pmtest invalid {{runId}}` (the missing-name and blank-name requests have no usable name); only blank name is wrong. Stores nothing.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"   \",\n  \"year\": 1900,\n  \"genres\": [\n    \"Pminvalid{{runId}}\"\n  ],\n  \"ageLimit\": 18,\n  \"rating\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST invalid movie, year 1800 - 400 with violations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name year as out of range\", function () {",
+                  "    pm.expect(body.violations).to.be.an(\"array\");",
+                  "    const found = body.violations.filter(function (v) { return v.field === \"year\"; });",
+                  "    pm.expect(found, \"a violation for year\").to.have.lengthOf(1);",
+                  "    pm.expect(found[0].message).to.match(/^must be between 1888 and \\d{4}$/);",
+                  "    pm.expect(body.violations, \"no other field is reported\").to.have.lengthOf(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Otherwise valid movie with the shared name `0 Pmtest invalid {{runId}}` (the missing-name and blank-name requests have no usable name); only year 1800 is wrong. Stores nothing.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"0 Pmtest invalid {{runId}}\",\n  \"year\": 1800,\n  \"genres\": [\n    \"Pminvalid{{runId}}\"\n  ],\n  \"ageLimit\": 18,\n  \"rating\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST invalid movie, year 3000 - 400 with violations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name year as out of range\", function () {",
+                  "    pm.expect(body.violations).to.be.an(\"array\");",
+                  "    const found = body.violations.filter(function (v) { return v.field === \"year\"; });",
+                  "    pm.expect(found, \"a violation for year\").to.have.lengthOf(1);",
+                  "    pm.expect(found[0].message).to.match(/^must be between 1888 and \\d{4}$/);",
+                  "    pm.expect(body.violations, \"no other field is reported\").to.have.lengthOf(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Otherwise valid movie with the shared name `0 Pmtest invalid {{runId}}` (the missing-name and blank-name requests have no usable name); only year 3000 is wrong. Stores nothing.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"0 Pmtest invalid {{runId}}\",\n  \"year\": 3000,\n  \"genres\": [\n    \"Pminvalid{{runId}}\"\n  ],\n  \"ageLimit\": 18,\n  \"rating\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST invalid movie, empty genres - 400 with violations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name genres as 'must have 1 to 5 entries'\", function () {",
+                  "    pm.expect(body.violations).to.be.an(\"array\");",
+                  "    const found = body.violations.filter(function (v) { return v.field === \"genres\"; });",
+                  "    pm.expect(found, \"a violation for genres\").to.have.lengthOf(1);",
+                  "    pm.expect(found[0].message).to.eql(\"must have 1 to 5 entries\");",
+                  "    pm.expect(body.violations, \"no other field is reported\").to.have.lengthOf(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Otherwise valid movie with the shared name `0 Pmtest invalid {{runId}}` (the missing-name and blank-name requests have no usable name); only empty genres is wrong. Stores nothing.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"0 Pmtest invalid {{runId}}\",\n  \"year\": 1900,\n  \"genres\": [],\n  \"ageLimit\": 18,\n  \"rating\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST invalid movie, rating 0 - 400 with violations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name rating as 'must be between 1 and 5'\", function () {",
+                  "    pm.expect(body.violations).to.be.an(\"array\");",
+                  "    const found = body.violations.filter(function (v) { return v.field === \"rating\"; });",
+                  "    pm.expect(found, \"a violation for rating\").to.have.lengthOf(1);",
+                  "    pm.expect(found[0].message).to.eql(\"must be between 1 and 5\");",
+                  "    pm.expect(body.violations, \"no other field is reported\").to.have.lengthOf(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Otherwise valid movie with the shared name `0 Pmtest invalid {{runId}}` (the missing-name and blank-name requests have no usable name); only rating 0 is wrong. Stores nothing.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"0 Pmtest invalid {{runId}}\",\n  \"year\": 1900,\n  \"genres\": [\n    \"Pminvalid{{runId}}\"\n  ],\n  \"ageLimit\": 18,\n  \"rating\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST invalid movie, rating 6 - 400 with violations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name rating as 'must be between 1 and 5'\", function () {",
+                  "    pm.expect(body.violations).to.be.an(\"array\");",
+                  "    const found = body.violations.filter(function (v) { return v.field === \"rating\"; });",
+                  "    pm.expect(found, \"a violation for rating\").to.have.lengthOf(1);",
+                  "    pm.expect(found[0].message).to.eql(\"must be between 1 and 5\");",
+                  "    pm.expect(body.violations, \"no other field is reported\").to.have.lengthOf(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Otherwise valid movie with the shared name `0 Pmtest invalid {{runId}}` (the missing-name and blank-name requests have no usable name); only rating 6 is wrong. Stores nothing.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"0 Pmtest invalid {{runId}}\",\n  \"year\": 1900,\n  \"genres\": [\n    \"Pminvalid{{runId}}\"\n  ],\n  \"ageLimit\": 18,\n  \"rating\": 6\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST invalid movie, ageLimit 19 - 400 with violations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name ageLimit as 'must be between 0 and 18'\", function () {",
+                  "    pm.expect(body.violations).to.be.an(\"array\");",
+                  "    const found = body.violations.filter(function (v) { return v.field === \"ageLimit\"; });",
+                  "    pm.expect(found, \"a violation for ageLimit\").to.have.lengthOf(1);",
+                  "    pm.expect(found[0].message).to.eql(\"must be between 0 and 18\");",
+                  "    pm.expect(body.violations, \"no other field is reported\").to.have.lengthOf(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Otherwise valid movie with the shared name `0 Pmtest invalid {{runId}}` (the missing-name and blank-name requests have no usable name); only ageLimit 19 is wrong. Stores nothing.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"0 Pmtest invalid {{runId}}\",\n  \"year\": 1900,\n  \"genres\": [\n    \"Pminvalid{{runId}}\"\n  ],\n  \"ageLimit\": 19,\n  \"rating\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST invalid movie, ageLimit -1 - 400 with violations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name ageLimit as 'must be between 0 and 18'\", function () {",
+                  "    pm.expect(body.violations).to.be.an(\"array\");",
+                  "    const found = body.violations.filter(function (v) { return v.field === \"ageLimit\"; });",
+                  "    pm.expect(found, \"a violation for ageLimit\").to.have.lengthOf(1);",
+                  "    pm.expect(found[0].message).to.eql(\"must be between 0 and 18\");",
+                  "    pm.expect(body.violations, \"no other field is reported\").to.have.lengthOf(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Otherwise valid movie with the shared name `0 Pmtest invalid {{runId}}` (the missing-name and blank-name requests have no usable name); only ageLimit -1 is wrong. Stores nothing.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"0 Pmtest invalid {{runId}}\",\n  \"year\": 1900,\n  \"genres\": [\n    \"Pminvalid{{runId}}\"\n  ],\n  \"ageLimit\": -1,\n  \"rating\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST invalid movie, actor with blank lastName - 400 with violations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name actors[0].lastName as 'is required'\", function () {",
+                  "    pm.expect(body.violations).to.be.an(\"array\");",
+                  "    const found = body.violations.filter(function (v) { return v.field === \"actors[0].lastName\"; });",
+                  "    pm.expect(found, \"a violation for actors[0].lastName\").to.have.lengthOf(1);",
+                  "    pm.expect(found[0].message).to.eql(\"is required\");",
+                  "    pm.expect(body.violations, \"no other field is reported\").to.have.lengthOf(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Otherwise valid movie with the shared name `0 Pmtest invalid {{runId}}` (the missing-name and blank-name requests have no usable name); only actor with blank lastName is wrong. Stores nothing.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"0 Pmtest invalid {{runId}}\",\n  \"year\": 1900,\n  \"genres\": [\n    \"Pminvalid{{runId}}\"\n  ],\n  \"ageLimit\": 18,\n  \"rating\": 1,\n  \"actors\": [\n    {\n      \"firstName\": \"Pmact{{runId}}\",\n      \"lastName\": \"  \"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST invalid movie, malformed JSON - 400 problem",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"detail says the body is not a valid movie and no field is named\", function () {",
+                  "    pm.expect(body.violations).to.be.undefined;",
+                  "    pm.expect(body.detail).to.eql(\"The request body is not a valid movie: it must be a JSON object with the documented fields and types.\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "A body that is not valid JSON: 400 problem detail, `violations` omitted. Stores nothing.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"0 Pmtest invalid json {{runId}}\", \"year\": 1900,",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST movie with a client-supplied id - 400 id is not a known field",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name id as not a known field\", function () {",
+                  "    pm.expect(body.violations).to.eql([{ field: \"id\", message: \"is not a known field\" }]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "`id` is never accepted from clients. Stores nothing.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"0123456789abcdef0123456789abcdef\",\n  \"name\": \"0 Pmtest invalid id {{runId}}\",\n  \"year\": 1900,\n  \"genres\": [\n    \"Pminvalid{{runId}}\"\n  ],\n  \"ageLimit\": 18,\n  \"rating\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST movie with the wrong type for year - 400 has the wrong type",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Bad Request, status 400, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"violations name year as having the wrong type\", function () {",
+                  "    pm.expect(body.violations).to.eql([{ field: \"year\", message: \"has the wrong type\" }]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "`year` as a string is rejected, not converted. Stores nothing.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"0 Pmtest invalid type {{runId}}\",\n  \"year\": \"1900\",\n  \"genres\": [\n    \"Pminvalid{{runId}}\"\n  ],\n  \"ageLimit\": 18,\n  \"rating\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST movie larger than 256 KB - 413 problem",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 300,000 characters, over the 256 KB (262,144 byte) body limit.",
+                  "pm.variables.set(\"bigSynopsis\", \"x\".repeat(300000));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 413 Payload Too Large\", function () {",
+                  "    pm.response.to.have.status(413);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail with type about:blank, title Payload Too Large, status 413, a detail and the request path\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.type).to.eql(\"about:blank\");",
+                  "    pm.expect(body.title).to.eql(\"Payload Too Large\");",
+                  "    pm.expect(body.status).to.eql(413);",
+                  "    pm.expect(body.detail).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.instance).to.eql(\"/api/v1/movies\");",
+                  "});",
+                  "",
+                  "pm.test(\"detail says a movie fits in 256 KB\", function () {",
+                  "    pm.expect(body.detail).to.eql(\"The request body is too large; a movie fits in 256 KB.\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "The synopsis is padded to about 300 KB by the pre-request script, above the 256 KB limit. Rejected before anything is stored.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"0 Pmtest toolarge {{runId}}\",\n  \"year\": 1900,\n  \"genres\": [\n    \"Pminvalid{{runId}}\"\n  ],\n  \"ageLimit\": 18,\n  \"rating\": 1,\n  \"synopsis\": \"{{bigSynopsis}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6549,6 +7594,68 @@
                 {
                   "key": "size",
                   "value": "100"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET search name=pmtest&utm_source=x - 400 unknown parameter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"returns 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"returns content type application/problem+json\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/problem+json\");",
+                  "});",
+                  "",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { body = null; }",
+                  "",
+                  "pm.test(\"returns a problem detail naming utm_source as not a known parameter\", function () {",
+                  "    pm.expect(body, \"response body should be JSON\").to.be.an(\"object\");",
+                  "    pm.expect(body.status).to.eql(400);",
+                  "    pm.expect(body.title).to.eql(\"Bad Request\");",
+                  "    pm.expect(body.violations).to.eql([{ field: \"utm_source\", message: \"is not a known parameter\" }]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "A tracking tag next to a search field: unknown parameters are rejected, never ignored.",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, application/problem+json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/movies?name=pmtest&utm_source=x",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "movies"
+              ],
+              "query": [
+                {
+                  "key": "name",
+                  "value": "pmtest"
+                },
+                {
+                  "key": "utm_source",
+                  "value": "x"
                 }
               ]
             }

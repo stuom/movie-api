@@ -3,10 +3,11 @@
 API tests for the deployed Movie API, run by hand in Postman (or with Newman). The contract they
 test is [`docs/api.md`](../docs/api.md). They are not part of `./gradlew check`.
 
-> **Data warning:** each run adds exactly one movie named `0 Pmtest <runId>` to the **real**
-> database. There is no delete endpoint, so remove leftovers by hand in the Firestore console
-> (collection of movies, documents whose `name` starts with `0 Pmtest`). Ask before running the
-> collection against the deployed service.
+> **Data warning:** every run creates one extra movie named `0 Pmtest <runId>` in the **live**
+> Firestore database, and the API has no way to delete it (there is no delete endpoint, by design).
+> Remove leftovers **by hand in the Firestore console** (collection of movies, documents whose
+> `name` starts with `0 Pmtest`). If a test of a 400 or 413 request fails, that request may have stored a
+> movie whose name starts with `0 Pmtest`; delete it the same way. Ask before running the collection against the deployed service.
 
 ## Files
 - `movie-api.postman_collection.json`: the requests and their test scripts (Postman Collection v2.1).
@@ -42,6 +43,10 @@ request clears them all, so a run never passes on a previous run's values.
 | `POST add the same movie again - 409 with movieId` | Same year, name in different case with extra spaces: `409` problem detail (`type` `about:blank`, `title` `Conflict`) whose `movieId` is the saved id. Exercises the real Firestore duplicate path. |
 | `POST reject an invalid movie - 400 with violations` | Blank name, rating 9, actor without `lastName`: `400` problem detail, `detail` counting 3 rules, `violations` exactly `name` / `rating` / `actors[0].lastName` in field order. |
 | `POST reject an unknown field - 400 naming synopsys` | Valid movie plus `synopsys`: `400` problem detail with the violation `{"field": "synopsys", "message": "is not a known field"}`. Uses the name `0 Pmtest unknown <runId>`, so a regression that stored it would be easy to spot and delete. |
+| `POST invalid movie, <case> - 400 with violations` (10 requests) | One request per broken rule, otherwise valid, all sharing the recognizable name `0 Pmtest invalid <runId>` (the missing-name and blank-name requests have no usable name) and the genre `Pminvalid<runId>`: missing name, blank name, year 1800, year 3000, empty genres, rating 0, rating 6, ageLimit 19, ageLimit -1, an actor with a blank lastName. Each is a `400` problem detail with exactly one violation, on the right field. |
+| `POST invalid movie, malformed JSON - 400 problem` | Truncated JSON: `400` problem detail. |
+| `POST movie with a client-supplied id` / `wrong type for year` | `400` with `id` `is not a known field`, and `year` `has the wrong type`. |
+| `POST movie larger than 256 KB - 413 problem` | The pre-request script pads the synopsis to 300,000 characters: `413` problem detail mentioning 256 KB. Nothing is stored. |
 | `GET a movie with an unknown id - 404 problem` | `GET /api/v1/movies/does-not-exist-<runId>`: `404` problem detail (`title` `Not Found`, `instance` the request path), `detail` exactly `There is no movie with this id.` and not repeating the id. |
 
 ### 02 List movies (`GET /api/v1/movies` without search fields)
@@ -108,6 +113,7 @@ order:
 | `viewerAge=121`, `viewerAge=-1` | `viewerAge` `must be between 0 and 120`. |
 | `viewerAge=abc` | `viewerAge` `must be a whole number`. |
 | `genre=drama&genre=drama` | `genre` `must be given only once`. |
+| `name=pmtest&utm_source=x` | `utm_source` `is not a known parameter`. |
 
 The broad searches (`minYear=1900`, `viewerAge=18`, `maxRating=1`, `genre=drama`, ...) expect the
 test movie on their first page of 100. It sorts near the top (its name starts with `0`), so this
