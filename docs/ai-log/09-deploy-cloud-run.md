@@ -63,7 +63,12 @@ code-reviewer (on the diff, run in parallel with the documentation):
 
 ## Outcome
 - Verification reported by the main agent: `./gradlew check` green; with one deploy key removed temporarily, `./gradlew check` still passed, `./gradlew deployCloudRun --dry-run` listed the tasks, and running `deployCloudRun` failed with the message naming the missing key.
-- **Pending, by the user:** the one-time cloud setup (APIs, Firestore database, service account, IAM roles, budget alert), the first deploy, the seed check, the Postman run (separate consent: each run adds a `0 Pmtest` movie) and adding the live URL to README and `docs/deployment.md`.
+- **Cloud setup, run by the user** with the commands from the plan: the five APIs, the Firestore `(default)` database (europe-north1, Standard edition, free tier, delete protection), `movie-api-run` with `roles/datastore.user`.
+- **Build account:** `gcloud builds get-default-service-account` returned the Compute Engine default account, which already has `roles/editor`, so `roles/run.builder` was not granted (no extra permissions).
+- **First deploy** (user's yes): `./gradlew deployCloudRun` succeeded in 4 min 24 s; revision `movie-api-00001-w9p`, URL https://movie-api-719585522889.europe-north1.run.app.
+- **Seed check:** a request was sent right after the deploy; the log shows `Catalog loaded with 0 movies`, then `Seeded 20 of 20 sample movies` about 30 s after startup. The API lists 20 movies.
+- **Smoke checks:** list `200`, `/v3/api-docs` `200`, `/swagger-ui.html` `200`, `actor=ryan wright` returns no items, `actor` + `director` returns the documented `400`. The service runs as `movie-api-run` with max 1 instance.
+- **Still pending:** the Postman run (separate consent: each run adds a `0 Pmtest` movie) and the budget alert (Billing console, by the user).
 - Commit: see git log (`feat(deploy): one-command deployment to Cloud Run in europe-north1`).
 
 ## Lessons

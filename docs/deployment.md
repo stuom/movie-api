@@ -5,8 +5,8 @@ The Movie API runs on **Google Cloud Run** and stores movies in **Cloud Firestor
 ([ADR-0014](adr/0014-deploy-to-cloud-run-and-firestore-in-europe-north1.md)).
 After the one-time setup below, a deployment is one command: `./gradlew deployCloudRun`.
 
-> **Status:** not deployed yet. The one-time cloud setup has not been run.
-> **Live URL:** added after the first deploy.
+> **Status:** deployed on 2026-10-14 (first revision `movie-api-00001-w9p`). The one-time cloud setup is done.
+> **Live URL:** https://movie-api-719585522889.europe-north1.run.app (Swagger UI: https://movie-api-719585522889.europe-north1.run.app/swagger-ui.html).
 
 All settings come from files in the repository, so every deployment is the same:
 

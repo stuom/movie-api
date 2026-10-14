@@ -4,12 +4,12 @@ REST service to list, search and add movies, built with Spring Boot 3 on Java 21
 
 > Status: early development. The service builds and enforces the quality gates. It needs Firestore credentials to start, so it runs on Cloud Run only; there is no local run by design.
 > Implemented and unit tested: adding a movie (`POST /api/v1/movies`), fetching one movie (`GET /api/v1/movies/{id}`), and listing or searching the catalog a page at a time (`GET /api/v1/movies`, at most one search field per request, for example `?genre=sci-fi`, `?minYear=2000&maxYear=2009` or `?actor=harrison%20ford`).
-> One-command deployment to Google Cloud Run in `europe-north1` (`./gradlew deployCloudRun`) is set up, but the service is **not deployed yet**: the one-time cloud setup in [docs/deployment.md](docs/deployment.md) has not been run.
+> Deployed to Google Cloud Run in `europe-north1` with one command (`./gradlew deployCloudRun`); see [docs/deployment.md](docs/deployment.md).
 
 ## API
 - Contract with curl examples and every error response: [docs/api.md](docs/api.md)
 - Once deployed, the service serves Swagger UI at `/swagger-ui.html` and the OpenAPI description at `/v3/api-docs` (both public, [ADR-0011](docs/adr/0011-springdoc-openapi.md)).
-  Live URL: added after the first deploy.
+  Live URL: https://movie-api-719585522889.europe-north1.run.app (Swagger UI: https://movie-api-719585522889.europe-north1.run.app/swagger-ui.html).
 
 ## Prerequisites
 - **Java 21 JDK**, discoverable by Gradle: either set `JAVA_HOME` to it, or list its path in
