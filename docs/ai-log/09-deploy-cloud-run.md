@@ -68,7 +68,8 @@ code-reviewer (on the diff, run in parallel with the documentation):
 - **First deploy** (user's yes): `./gradlew deployCloudRun` succeeded in 4 min 24 s; revision `movie-api-00001-w9p`, URL https://movie-api-719585522889.europe-north1.run.app.
 - **Seed check:** a request was sent right after the deploy; the log shows `Catalog loaded with 0 movies`, then `Seeded 20 of 20 sample movies` about 30 s after startup. The API lists 20 movies.
 - **Smoke checks:** list `200`, `/v3/api-docs` `200`, `/swagger-ui.html` `200`, `actor=ryan wright` returns no items, `actor` + `director` returns the documented `400`. The service runs as `movie-api-run` with max 1 instance.
-- **Still pending:** the Postman run (separate consent: each run adds a `0 Pmtest` movie) and the budget alert (Billing console, by the user).
+- **Postman run** (user's yes): Newman 6.2.3 against the live URL ran 69 requests with 448 assertions and 0 failures, in 7.9 s. It added the test movie `0 Pmtest mv7nior7` (id `3721ad8a204fa033b0588d2f970babe2`); remove it by hand in the Firestore console.
+- **Still pending:** the budget alert (Billing console, by the user).
 - Commit: see git log (`feat(deploy): one-command deployment to Cloud Run in europe-north1`).
 
 ## Lessons
